@@ -1,0 +1,56 @@
+@startuml arch
+title SnakeMatch3 架构（服务器权威 + 瘦客户端渲染）
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+
+package "浏览器客户端" {
+  [input.js\n键盘 -> 意图] as IN
+  [net.js\nWebSocket + 快照缓冲] as NET
+  [main.js\n主循环/插值] as MAIN
+  [scene.js\nthree.js 场景/相机/地面] as SCENE
+  [snakeView.js\n珠体网格池] as SV
+  [skins.js\n皮肤材质(玻璃珠等)] as SKIN
+  [effects.js\n粒子/冲击环] as FX
+  [audio.js\nWebAudio 合成音效] as AUD
+  [hud.js\n昵称/排行/提示] as HUD
+}
+
+package "Node 本地服务器" {
+  [index.js\nHTTP静态 + WS接入] as SRV
+  [world.js\n30Hz 权威模拟] as WORLD
+  [snake.js\n轨迹/移动/断尾] as SNK
+  [match3.js\n三消消除+连锁] as M3
+  [ai.js\n随机游走AI] as AI
+  [profiles.js\nIP::昵称 -> 奖杯] as PROF
+  database "data/players.json" as DB
+}
+
+package "shared/（同构）" {
+  [config.js] as CFG
+  [protocol.js] as PROTO
+  [mathUtil.js] as MU
+}
+
+IN --> NET : input/jump
+NET <--> SRV : WebSocket(JSON)
+NET --> MAIN : 快照队列
+MAIN --> SCENE
+MAIN --> SV
+SV --> SKIN
+MAIN --> FX
+MAIN --> AUD
+MAIN --> HUD
+SRV --> WORLD
+WORLD --> SNK
+WORLD --> M3
+WORLD --> AI
+WORLD --> PROF
+PROF --> DB
+CFG ..> WORLD
+CFG ..> MAIN
+PROTO ..> NET
+PROTO ..> SRV
+MU ..> SNK
+MU ..> SCENE
+@enduml

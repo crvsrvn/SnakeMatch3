@@ -1,0 +1,16 @@
+{
+  "name": "snake-match3",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "俯视角局域网多人贪吃蛇三消对战（three.js + Node 权威服务器）",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "three": "^0.180.0",
+    "ws": "^8.18.0"
+  }
+}
