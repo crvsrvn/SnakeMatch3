@@ -1,8 +1,9 @@
-// 服务器压力测试：100 条 AI 蛇，量单帧耗时、可持续 tick 率、各阶段占比与带宽。
-// 运行： node tests/stress.js [蛇数] [地图边长]
+// Server load test: 100 bot snakes, measuring per-frame cost, sustainable tick rate, the
+// share taken by each phase, and bandwidth.
+// Run with: node tests/stress.js [snakes] [map size]
 //
-// 判定标准：单帧耗时的 p99 要明显小于一个 tick 的预算（60Hz=16.7ms / 30Hz=33.3ms），
-// 否则一旦某帧超时就会挤掉后面的帧，表现为服务器"掉帧"。
+// The bar: p99 frame cost must sit well under one tick of budget (16.7ms at 60Hz, 33.3ms at
+// 30Hz). Otherwise one slow frame eats into the next and the server visibly drops frames.
 
 import { CONFIG } from '../config/game.config.js';
 
@@ -11,7 +12,7 @@ const MAP = Number(process.argv[3] || CONFIG.map.size);
 
 CONFIG.ai.count = SNAKES;
 CONFIG.map.size = MAP;
-// 道具密度跟着地图面积走，保持和默认配置相当
+// Item density follows map area, so it matches the default configuration
 CONFIG.items.count = Math.round(24 * (MAP / 110) ** 2);
 CONFIG.items.maxOnMap = Math.max(CONFIG.items.count * 4, 90);
 
@@ -31,9 +32,9 @@ for (const name of PHASES) {
   };
 }
 
-// ---------- 1) 单帧耗时 ----------
+// ---------- 1) Per-frame cost ----------
 const WARMUP = 120;
-const TICKS = 2400;                       // 60Hz 下 40 秒
+const TICKS = 2400;                       // 40 seconds at 60Hz
 for (let i = 0; i < WARMUP; i++) world.step(dt);
 for (const k of PHASES) phaseNs[k] = 0;
 
@@ -49,43 +50,44 @@ for (let i = 0; i < TICKS; i++) {
 const sorted = Float64Array.from(samples).sort();
 const pct = (p) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))];
 
-// ---------- 2) 带宽 ----------
+// ---------- 2) Bandwidth ----------
 const packet = { t: 'state', f: [], items: world.itemsSnapshot(), ev: [] };
 for (let i = 0; i < CONFIG.net.framesPerPacket; i++) { world.step(dt); packet.f.push(world.frame()); }
 const packetBytes = JSON.stringify(packet).length;
 const packetHz = CONFIG.net.tickRate / CONFIG.net.framesPerPacket;
 
-// ---------- 3) 真实时钟下能否跑满 ----------
+// ---------- 3) Can it keep up against a real clock ----------
 const realHz = await measureRealtime(world, CONFIG.net.tickRate, 5);
 
-// ---------- 报告 ----------
+// ---------- Report ----------
 let live = 0, beads = 0;
 for (const s of world.snakes.values()) { if (!s.deadUntil) live++; beads += s.beads.length; }
 
-console.log(`蛇 ${SNAKES} 条（存活 ${live}）/ 地图 ${MAP}×${MAP} / 道具 ${world.items.length} / 珠子总数 ${beads}`);
-console.log(`模拟 ${TICKS} tick，配置 tickRate = ${CONFIG.net.tickRate}Hz`);
-console.log('单帧耗时(ms):'
-  + `  平均 ${(totalNs / TICKS / 1e6).toFixed(3)}`
+console.log(`${SNAKES} snakes (${live} alive) / map ${MAP}x${MAP} / ${world.items.length} items / ${beads} beads total`);
+console.log(`simulated ${TICKS} ticks, configured tickRate = ${CONFIG.net.tickRate}Hz`);
+console.log('frame cost (ms):'
+  + `  mean ${(totalNs / TICKS / 1e6).toFixed(3)}`
   + `  p50 ${pct(0.5).toFixed(3)}  p95 ${pct(0.95).toFixed(3)}`
-  + `  p99 ${pct(0.99).toFixed(3)}  最大 ${sorted[sorted.length - 1].toFixed(3)}`);
+  + `  p99 ${pct(0.99).toFixed(3)}  max ${sorted[sorted.length - 1].toFixed(3)}`);
 
-console.log('各阶段占比:');
+console.log('share by phase:');
 const totalPhase = Object.values(phaseNs).reduce((a, b) => a + b, 0);
 const rows = Object.entries(phaseNs).sort((a, b) => b[1] - a[1]);
 for (const [k, ns] of rows) {
-  console.log(`  ${(k + '                     ').slice(0, 22)} ${(ns / TICKS / 1e6).toFixed(3)} ms/帧`
+  console.log(`  ${(k + '                     ').slice(0, 22)} ${(ns / TICKS / 1e6).toFixed(3)} ms/frame`
     + `  ${(ns / totalNs * 100).toFixed(1)}%`);
 }
-console.log(`  ${'移动+采样珠坐标      '.slice(0, 22)} ${((totalNs - totalPhase) / TICKS / 1e6).toFixed(3)} ms/帧`
+console.log(`  ${'move + sample beads   '.slice(0, 22)} ${((totalNs - totalPhase) / TICKS / 1e6).toFixed(3)} ms/frame`
   + `  ${((totalNs - totalPhase) / totalNs * 100).toFixed(1)}%`);
 
 const p99 = pct(0.99);
-console.log(`预算占用:  60Hz(16.67ms) 用掉 ${(p99 / 16.667 * 100).toFixed(1)}%`
-  + `   30Hz(33.33ms) 用掉 ${(p99 / 33.333 * 100).toFixed(1)}%   （按 p99 计）`);
-console.log(`真实时钟下实测 ${realHz.hz.toFixed(1)} tick/s（目标 ${CONFIG.net.tickRate}），最大间隔 ${realHz.maxGap.toFixed(1)}ms`);
-console.log(`单包 ${(packetBytes / 1024).toFixed(1)} KB × ${packetHz}/s = ${(packetBytes * packetHz / 1024).toFixed(0)} KB/s 每客户端`);
+console.log(`budget used:  60Hz (16.67ms) ${(p99 / 16.667 * 100).toFixed(1)}%`
+  + `   30Hz (33.33ms) ${(p99 / 33.333 * 100).toFixed(1)}%   (measured at p99)`);
+console.log(`against a real clock: ${realHz.hz.toFixed(1)} tick/s (target ${CONFIG.net.tickRate}), largest gap ${realHz.maxGap.toFixed(1)}ms`);
+console.log(`packet ${(packetBytes / 1024).toFixed(1)} KB x ${packetHz}/s = ${(packetBytes * packetHz / 1024).toFixed(0)} KB/s per client`);
 
-/** 用和服务器一样的定时器+累加器结构跑若干秒，看实际能推进多少 tick */
+/** Run the same timer + accumulator structure the server uses, and see how many ticks it
+ *  actually manages */
 function measureRealtime(w, hz, seconds) {
   return new Promise((resolve) => {
     const step = 1 / hz;

@@ -1,4 +1,5 @@
-// 权威世界：固定步长模拟所有蛇、道具、碰撞与三消，并产出广播帧。
+// The authoritative world: a fixed-step simulation of every snake, item, collision and
+// match, producing the frames that get broadcast.
 
 import { CONFIG } from '../config/game.config.js';
 import { EV, WILD } from '../shared/protocol.js';
@@ -26,13 +27,13 @@ export class World {
     this.time = 0;
     this.nextId = 1;
     this.nextItemId = 1;
-    this.wildTimer = CONFIG.items.wild.intervalSec * 0.4;   // 开局稍等一会再刷第一簇
+    this.wildTimer = CONFIG.items.wild.intervalSec * 0.4;   // hold off a little before the first cluster
 
     for (let i = 0; i < CONFIG.ai.count; i++) this.spawnAI(i);
     this.refillItems();
   }
 
-  // ---------- 生命周期 ----------
+  // ---------- Lifecycle ----------
 
   spawnAI(i) {
     const s = new Snake(this.nextId++, `bot${i + 1}`, true, CONFIG.skins[i % CONFIG.skins.length]);
@@ -51,18 +52,18 @@ export class World {
     return s;
   }
 
-  /** 场上（含 AI）是否已经有人叫这个名字 */
+  /** Is anyone on the field (bots included) already using this name? */
   isNameTaken(name) {
     for (const s of this.snakes.values()) if (s.name === name) return true;
     return false;
   }
 
-  /** 当前在场的全部昵称，登录界面用来提前提示占用 */
+  /** Every nickname currently in play, so the login screen can warn early */
   takenNames() {
     return [...this.snakes.values()].map((s) => s.name);
   }
 
-  /** 在原昵称后接数字凑一个没被占用的，长度仍受 12 字限制 */
+  /** Append digits to the requested name until it is free, still within 12 characters */
   freeVariant(name) {
     const base = name.replace(/\d+$/, '') || name;
     for (let i = 2; i < 1000; i++) {
@@ -73,16 +74,20 @@ export class World {
     return this.freeDefaultName();
   }
 
-  /** 没填昵称时用的默认名：贪吃蛇1号、贪吃蛇2号…（跳过场上已占用的编号） */
+  /**
+   * Default nickname when the player leaves the field blank: Snake 1, Snake 2, ...
+   * (skipping numbers already in use). It stays in one language on purpose -- a nickname
+   * is shown to every other player, so it cannot follow one viewer's UI language.
+   */
   freeDefaultName() {
     const used = new Set();
     for (const s of this.snakes.values()) {
-      const m = /^贪吃蛇(\d+)号$/.exec(s.name);
+      const m = /^Snake (\d+)$/.exec(s.name);
       if (m) used.add(Number(m[1]));
     }
     let n = 1;
     while (used.has(n)) n++;
-    return `贪吃蛇${n}号`;
+    return `Snake ${n}`;
   }
 
   removeSnake(id) {
@@ -90,7 +95,7 @@ export class World {
     this.brains.delete(id);
   }
 
-  /** @param near 给定则在其附近 respawnNearRadius 内找位置，否则全图随机 */
+  /** @param near if given, look within respawnNearRadius of it; otherwise anywhere on the map */
   placeAtFreeSpot(s, near) {
     const R = S.respawnNearRadius;
     let best = null, bestD = -1;
@@ -121,7 +126,7 @@ export class World {
     return Math.sqrt(min);
   }
 
-  // ---------- 主循环 ----------
+  // ---------- Main loop ----------
 
   step(dt) {
     this.time += dt;
@@ -140,6 +145,7 @@ export class World {
     }
 
     this.pickupItems();
+    this.updateInvuln();
     this.resolveCollisions();
     this.resolveMatchesAndWins();
     this.refillItems();
@@ -148,6 +154,32 @@ export class World {
 
   immune(s) { return this.time < s.invulnUntil; }
 
+  /**
+   * Invulnerable means out of collision entirely: cannot hit anyone, cannot be hit.
+   * Cutting it off purely on time leaves a hole -- if we still overlap someone on the frame
+   * it expires, the very next step kills us or severs our tail. So when it expires while
+   * still overlapping, we keep extending until contact is broken, with a hard cap so that
+   * someone tailgating an invulnerable snake cannot keep it invulnerable forever.
+   */
+  updateInvuln() {
+    for (const s of this.snakes.values()) {
+      if (!s.invulnUntil || this.time < s.invulnUntil || !this.alive(s)) continue;
+      if (this.time >= s.invulnHardUntil || !this.overlapping(s)) s.invulnUntil = 0;
+      else s.invulnUntil = this.time + 0.05;
+    }
+  }
+
+  /** Overlapping in a way that would resolve the instant collisions come back:
+   *  our head touching them, or their head touching us */
+  overlapping(a) {
+    for (const b of this.snakes.values()) {
+      if (b === a || !this.alive(b) || this.immune(b)) continue;
+      for (const q of b.beads) if (this.touch(a.beads[0], q)) return true;
+      for (const p of a.beads) if (this.touch(b.beads[0], p)) return true;
+    }
+    return false;
+  }
+
   alive(s) { return !s.deadUntil && s.beads.length > 0; }
 
   touch(p, q) {
@@ -155,7 +187,7 @@ export class World {
     return toroidalDist2(p.x, p.y, q.x, q.y, MAP) < HIT_D2;
   }
 
-  // ---------- 道具 ----------
+  // ---------- Items ----------
 
   countNormalItems() {
     let n = 0;
@@ -176,7 +208,7 @@ export class World {
     }
   }
 
-  /** 定时在随机位置刷一簇万能珠 */
+  /** Periodically spawn a cluster of wild beads somewhere random */
   tickWildClusters(dt) {
     const W = CONFIG.items.wild;
     this.wildTimer -= dt;
@@ -210,7 +242,7 @@ export class World {
     for (const s of this.snakes.values()) {
       if (!this.alive(s)) continue;
       const head = s.beads[0];
-      if (head.z > S.beadRadius) continue;        // 跳跃中不吃：可用空格主动跳过不想要的颜色
+      if (head.z > S.beadRadius) continue;        // No eating mid-jump: press space to skip a color you do not want
       if (s.colors.length >= S.maxLength) continue;
       for (let i = this.items.length - 1; i >= 0; i--) {
         const it = this.items[i];
@@ -224,13 +256,13 @@ export class World {
     }
   }
 
-  // ---------- 碰撞 ----------
+  // ---------- Collisions ----------
 
   resolveCollisions() {
     const list = [...this.snakes.values()].filter((s) => this.alive(s));
-    const done = new Set();   // 本帧已结算过的蛇，避免连环重复判定
+    const done = new Set();   // snakes already resolved this frame, so nothing cascades twice
 
-    // 1) 头对头
+    // 1) Head on head
     for (let i = 0; i < list.length; i++) {
       for (let j = i + 1; j < list.length; j++) {
         const a = list[i], b = list[j];
@@ -242,7 +274,7 @@ export class World {
       }
     }
 
-    // 2) 头撞他人身体 -> 断尾接管
+    // 2) Head into another body -> sever and graft the tail
     for (const a of list) {
       if (done.has(a.id) || this.immune(a) || !this.alive(a)) continue;
       const head = a.beads[0];
@@ -260,21 +292,22 @@ export class World {
       done.add(a.id); done.add(best.b.id);
     }
 
-    // 3) 撞到自己
+    // 3) Into ourselves
     if (S.selfCollision === 'die') {
       for (const a of list) {
         if (this.immune(a) || this.time < a.noSelfUntil || !this.alive(a)) continue;
         const head = a.beads[0];
         for (let k = S.selfCollisionMinIndex; k < a.beads.length; k++) {
           if (!this.touch(head, a.beads[k])) continue;
-          this.kill(a, '自己');
+          this.kill(a, 'themselves');
           break;
         }
       }
     }
   }
 
-  /** 头对头：比较"正前方程度"，胜者消一颗头珠，败者死亡；势均力敌则同归于尽 */
+  /** Head on head: whoever hit more squarely wins, loses one head bead, and kills the
+   *  other; a dead heat kills both */
   headOn(a, b) {
     const ha = a.beads[0], hb = b.beads[0];
     const dx = toroidalDelta(ha.x, hb.x, MAP), dy = toroidalDelta(ha.y, hb.y, MAP);
@@ -287,7 +320,7 @@ export class World {
       p: [r2(ha.x + dx / 2), r2(ha.y + dy / 2), r2((ha.z + hb.z) / 2)],
     });
 
-    if (Math.abs(fa - fb) < S.headOnTieEpsilon) {   // 正得一样，同归于尽
+    if (Math.abs(fa - fb) < S.headOnTieEpsilon) {   // equally square, both die
       this.kill(a, b.name); this.kill(b, a.name);
     } else if (fa > fb) {
       this.popHead(a); this.kill(b, a.name);
@@ -302,22 +335,32 @@ export class World {
     s.beads = s.computeBeads();
   }
 
-  /** a 的头撞到 b 的第 k 节：b 只保留前段，断尾反转后接到 a 头前 */
+  /** a's head hit b's bead k: b keeps the front part, the tail is reversed and grafted
+   *  in front of a's head */
   severTail(a, b, k) {
     const p = a.beads[0];
-    this.events.push({ t: EV.HITBODY, p: [r2(p.x), r2(p.y), r2(p.z)] });
+    const hit = [r2(p.x), r2(p.y), r2(p.z)];
+    const before = a.colors.length;
     const sev = b.severAt(k);
     b.beads = b.computeBeads();
     a.prependChain(sev.pts, sev.colors, this.time);
     a.beads = a.computeBeads();
+    // Beads actually gained: prependChain truncates at maxLength, so use the length
+    // difference rather than the size of the severed piece
+    this.events.push({
+      t: EV.HITBODY, p: hit,
+      aid: a.id, an: a.name, bid: b.id, bn: b.name,
+      n: a.colors.length - before,
+    });
   }
 
-  // ---------- 死亡与重生 ----------
+  // ---------- Death and respawn ----------
 
   kill(s, byName) {
     if (s.deadUntil) return;
     const head = s.beads[0] || { x: s.x, y: s.y, z: 0 };
-    // 珠子随蛇一起消失，不留在场上；这份坐标只给客户端放炸开特效用
+    // The beads vanish with the snake, nothing is dropped; these coordinates only feed
+    // the client-side burst
     const beads = s.beads.map((b, i) => [r2(b.x), r2(b.y), r2(b.z), s.colors[i]]);
     s.deathPos = { x: wrap(head.x, MAP), y: wrap(head.y, MAP) };
     s.deadUntil = this.time + S.deathPauseSec;
@@ -329,21 +372,34 @@ export class World {
     });
   }
 
+  /** A win pauses in place just like a death, so the player can read the panel, then
+   *  starts a fresh run */
+  beginWinPause(s) {
+    s.deathPos = { x: wrap(s.x, MAP), y: wrap(s.y, MAP) };
+    s.deadUntil = this.time + S.winPauseSec;
+    s.won = true;
+  }
+
   respawnDead() {
     for (const s of this.snakes.values()) {
       if (!s.deadUntil || this.time < s.deadUntil) continue;
       s.deadUntil = 0;
-      this.placeAtFreeSpot(s, s.deathPos);        // 在死亡点附近重生，保证看得见死亡标记
+      if (s.won) {
+        s.won = false;
+        this.placeAtFreeSpot(s);                  // after a win: start over somewhere else
+      } else {
+        this.placeAtFreeSpot(s, s.deathPos);      // after a death: near where we fell, so the marker is in view
+      }
       s.beads = s.computeBeads();
       this.events.push({ t: EV.RESPAWN, id: s.id, p: [r2(s.x), r2(s.y)] });
     }
   }
 
-  // ---------- 三消与胜利 ----------
+  // ---------- Matching and winning ----------
 
   resolveMatchesAndWins() {
     for (const s of this.snakes.values()) {
-      if (s.deadUntil) continue;                  // 死亡停顿中长度为 0，不能算获胜
+      if (s.deadUntil) continue;                  // length is 0 while paused; that is not a win
       const groups = resolveMatches(s.colors, s.beads);
       for (const g of groups) {
         this.events.push({
@@ -356,25 +412,26 @@ export class World {
         s.trophies++;
         if (s.profile) this.profiles.addTrophy(s.profile);
         this.events.push({ t: EV.WIN, id: s.id, name: s.name, trophies: s.trophies });
-        this.placeAtFreeSpot(s);
+        this.beginWinPause(s);
       }
     }
   }
 
-  // ---------- 快照 ----------
+  // ---------- Snapshots ----------
 
-  /** 一帧位置数据。道具单独走 itemsSnapshot()，不必每帧重复 */
+  /** One frame of positions. Items go through itemsSnapshot() instead of repeating here. */
   frame() {
     const snakes = [];
     for (const s of this.snakes.values()) {
       const row = {
         id: s.id, n: s.name, sk: s.skin, ai: s.isAI ? 1 : 0,
-        tr: s.trophies, d: r3(s.dir), iv: this.immune(s) ? 1 : 0,
+        tr: s.trophies, d: r3(s.dir), iv: r2(Math.max(0, s.invulnUntil - this.time)),
         c: s.colors, b: [],
       };
       if (s.deadUntil) {
-        row.dead = r2(s.deadUntil - this.time);   // 剩余停顿秒数
+        row.dead = r2(s.deadUntil - this.time);   // seconds of pause left
         row.dp = [r2(s.deathPos.x), r2(s.deathPos.y)];
+        if (s.won) row.win = 1;                   // this pause is a win, not a death
       } else {
         const b = new Array(s.beads.length * 3);
         for (let i = 0; i < s.beads.length; i++) {

@@ -1,4 +1,4 @@
-// 客户端入口：登录 -> 建场景 -> 主循环（插值采样 / 渲染 / 特效 / HUD）。
+// Client entry point: login -> build the scene -> main loop (sample, render, effects, HUD).
 
 import * as THREE from 'three';
 import { Net } from './net.js';
@@ -11,6 +11,7 @@ import { Minimap } from './minimap.js';
 import { Hud } from './hud.js';
 import { Input } from './input.js';
 import * as A from './audio.js';
+import { t, applyStatic, setLang, getLang, onLangChange, skinLabel } from './i18n.js';
 import { EV, WILD } from '/shared/protocol.js';
 import { wrap, toroidalDelta, clamp } from '/shared/mathUtil.js';
 
@@ -29,10 +30,16 @@ const ui = {
   play: document.getElementById('playBtn'),
   hint: document.getElementById('nickHint'),
   foot: document.getElementById('loginFoot'),
+  langs: document.getElementById('langSwitch'),
 };
 let takenNames = new Set();
+let nickHistory = [];
 let welcomed = false;
 let chosenSkin = localStorage.getItem('sm3.skin') || 'glass';
+let foot = null;                       // {key, vars} so the footer survives a language switch
+
+applyStatic();
+syncLangButtons();
 
 const net = new Net({ onWelcome, onJoined, onReject, onEvents, onClose, onError });
 net.connect();
@@ -40,12 +47,31 @@ net.connect();
 const input = new Input(
   (dir, sprint) => net.sendInput(dir, sprint),
   () => net.sendJump(),
-  () => hud?.toast(A.toggleMute() ? '已静音' : '已取消静音'),
+  () => hud?.toast(t(A.toggleMute() ? 'toast.muted' : 'toast.unmuted')),
 );
 
 const fxColor = (c) => (c === WILD ? 0xffffff : CONFIG.colors[c]);
 
-// ---------------- 登录 ----------------
+// ---------------- Language ----------------
+
+function syncLangButtons() {
+  for (const b of ui.langs.querySelectorAll('button')) {
+    b.classList.toggle('on', b.dataset.lang === getLang());
+  }
+}
+ui.langs.addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (b) setLang(b.dataset.lang);
+});
+onLangChange(() => {
+  syncLangButtons();
+  renderHistory();
+  renderSkins();
+  renderFoot();
+  checkNickname();
+});
+
+// ---------------- Login ----------------
 
 function onWelcome(m) {
   CONFIG = m.config;
@@ -54,58 +80,82 @@ function onWelcome(m) {
   if (!CONFIG.skins.includes(chosenSkin)) chosenSkin = CONFIG.defaultSkin;
 
   takenNames = new Set(m.taken || []);
-  const history = m.nicknames || [];
-  const preferred = [localStorage.getItem('sm3.nick'), ...history]
+  nickHistory = m.nicknames || [];
+  const preferred = [localStorage.getItem('sm3.nick'), ...nickHistory]
     .find((n) => n && !takenNames.has(n));
   ui.nick.value = preferred || m.defaultNickname || '';
-  ui.history.innerHTML = history.map((n) => {
-    const t = takenNames.has(n) ? ' taken' : '';
-    return `<span class="nickChip${t}" data-nick="${escapeAttr(n)}"`
-      + `${t ? ' title="当前有人在用"' : ''}>${escapeHtml(n)}</span>`;
+  renderHistory();
+  renderSkins();
+
+  welcomed = true;
+  setPlayLabel('login.play');
+  foot = { key: 'login.footIp', vars: { ip: m.ip } };
+  renderFoot();
+  checkNickname();
+}
+
+function renderHistory() {
+  ui.history.innerHTML = nickHistory.map((n) => {
+    const taken = takenNames.has(n) ? ' taken' : '';
+    return `<span class="nickChip${taken}" data-nick="${escapeAttr(n)}"`
+      + `${taken ? ` title="${escapeAttr(t('login.chipTaken'))}"` : ''}>${escapeHtml(n)}</span>`;
   }).join('');
   ui.history.querySelectorAll('.nickChip').forEach((b) => b.addEventListener('click', () => {
     if (b.classList.contains('taken')) return;
     ui.nick.value = b.dataset.nick;
     checkNickname();
   }));
+}
 
+function renderSkins() {
+  if (!CONFIG) return;
   ui.skins.innerHTML = CONFIG.skins.map((s) => `
     <div class="skinBtn${s === chosenSkin ? ' on' : ''}" data-skin="${s}">
-      <span class="dot ${s}"></span>${m.skinLabels[s] || s}
+      <span class="dot ${s}"></span>${escapeHtml(skinLabel(s))}
     </div>`).join('');
   ui.skins.querySelectorAll('.skinBtn').forEach((b) => b.addEventListener('click', () => {
     chosenSkin = b.dataset.skin;
     ui.skins.querySelectorAll('.skinBtn').forEach((x) => x.classList.toggle('on', x === b));
   }));
-
-  welcomed = true;
-  ui.play.textContent = '进入战场';
-  ui.foot.textContent = `你的地址 ${m.ip} · 同一地址可以开多个网页、用不同昵称各玩各的`;
-  checkNickname();
 }
 
-/** 昵称占用的即时提示。服务器在 JOIN 时还会再判一次，这里只是提前告诉玩家 */
+function renderFoot() {
+  ui.foot.textContent = foot ? t(foot.key, foot.vars) : '';
+}
+
+/** Keep the label as a key, so a language switch re-renders the button correctly */
+function setPlayLabel(key) {
+  ui.play.dataset.i18n = key;
+  ui.play.textContent = t(key);
+}
+
+/**
+ * Instant feedback on a taken nickname. The server checks again on JOIN; this only tells
+ * the player before they press the button.
+ */
 function checkNickname() {
   const v = ui.nick.value.trim();
   const taken = v !== '' && takenNames.has(v);
   ui.hint.classList.toggle('bad', taken);
   ui.hint.classList.toggle('ok', !taken && v !== '');
-  ui.hint.textContent = taken ? `「${v}」已经有人在用，换一个吧`
-    : (v === '' ? '留空则自动分配一个名字' : '');
+  ui.hint.textContent = taken ? t('login.hintTaken', { name: v })
+    : (v === '' ? t('login.hintEmpty') : '');
   ui.play.disabled = taken || !welcomed;
   return !taken;
 }
 ui.nick.addEventListener('input', checkNickname);
 
 function onReject(m) {
-  takenNames = new Set(m.taken || [...takenNames, ui.nick.value.trim()]);
+  const attempted = ui.nick.value.trim();
+  takenNames = new Set(m.taken || [...takenNames, attempted]);
   ui.nick.value = m.suggestion || '';
   ui.play.disabled = false;
-  ui.play.textContent = '进入战场';
+  setPlayLabel('login.play');
   checkNickname();
   ui.hint.classList.remove('ok');
   ui.hint.classList.add('bad');
-  ui.hint.textContent = `${m.reason}${m.suggestion ? `，已替你改成「${m.suggestion}」` : ''}`;
+  ui.hint.textContent = t('login.rejectTaken', { name: attempted })
+    + (m.suggestion ? t('login.renamed', { name: m.suggestion }) : '');
 }
 
 ui.play.addEventListener('click', () => {
@@ -116,7 +166,7 @@ ui.play.addEventListener('click', () => {
   A.initAudio();
   A.resumeAudio();
   ui.play.disabled = true;
-  ui.play.textContent = '进入中…';
+  setPlayLabel('login.joining');
   net.join(nick, chosenSkin);
 });
 ui.nick.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !ui.play.disabled) ui.play.click(); });
@@ -127,7 +177,7 @@ function onJoined(m) {
   ui.login.classList.add('gone');
   hud.show();
   input.enabled = true;
-  hud.toast(`欢迎，${m.nickname}！消完全部珠子即可夺杯`);
+  hud.toast(t('toast.welcome', { name: m.nickname }));
 }
 
 function onClose() {
@@ -135,12 +185,13 @@ function onClose() {
   welcomed = false;
   ui.login.classList.remove('gone');
   ui.play.disabled = true;
-  ui.play.textContent = '连接已断开';
-  ui.foot.textContent = '服务器连接断开，刷新页面重新进入（不支持断线重连）';
+  setPlayLabel('login.disconnected');
+  foot = { key: 'login.footClosed' };
+  renderFoot();
 }
-function onError() { ui.foot.textContent = '无法连接服务器，请确认本地服务器已启动'; }
+function onError() { foot = { key: 'login.footError' }; renderFoot(); }
 
-// ---------------- 场景与主循环 ----------------
+// ---------------- Scene and main loop ----------------
 
 function boot() {
   setBeadSegments(...CONFIG.graphics.beadSegments);
@@ -165,8 +216,8 @@ let nextDue = 0, frameInterval = 1000 / 60;
 
 function frame(now) {
   requestAnimationFrame(frame);
-  // 帧率上限：按固定节拍判定而不是"距上一帧够久了吗"，
-  // 后者在 144Hz 屏上会退化成 48fps（两帧不够、三帧才够）。
+  // Frame cap on a fixed beat rather than "has enough time passed since the last frame":
+  // the latter degrades to 48fps on a 144Hz screen (two frames too few, three too many).
   if (now < nextDue) return;
   nextDue = nextDue + frameInterval <= now ? now + frameInterval : nextDue + frameInterval;
 
@@ -182,7 +233,7 @@ function frame(now) {
       if (me.dead && me.deathPos) followCamera(me.deathPos, dt, me.tp);
       else if (me.beads.length) followCamera(me.beads[0], dt, me.tp);
       hud.setSelf(me);
-      hud.setDeath(me.dead ? me.dead : null, myKiller);
+      hud.setPause(me.dead ? me.dead : null, me.win, myKiller, me.trophies);
     }
     const cullRadius = camDist * 1.5 + CONFIG.graphics.cullMargin;
     views.sync(st.snakes, anchor, myId, dt, cullRadius, CONFIG.graphics.labelRadius);
@@ -193,9 +244,10 @@ function frame(now) {
 
   updateDeathMarker(now / 1000);
   fx.update(dt);
+  // The camera never moves on its own: distance is the player's to set with the wheel, and
+  // the framing must not shift under them when something happens in the world.
   gfx.placeCamera(anchor.x, anchor.y, camDist);
-  gfx.renderer.render(gfx.scene, gfx.camera);
-  gfx.labelRenderer.render(gfx.scene, gfx.camera);
+  gfx.render();
 
   fpsAcc += dt; fpsN++;
   workAcc += performance.now() - workStart;
@@ -205,7 +257,7 @@ function frame(now) {
   }
 }
 
-/** 焦点在环面上朝目标平滑靠拢；重生等瞬移时直接吸附 */
+/** Ease the focus towards the target across the torus; snap on teleports such as respawn */
 function followCamera(target, dt, teleported) {
   const dx = toroidalDelta(anchor.x, target.x, MAP);
   const dy = toroidalDelta(anchor.y, target.y, MAP);
@@ -218,7 +270,7 @@ function followCamera(target, dt, teleported) {
   anchor.y = wrap(anchor.y + dy * k, MAP);
 }
 
-/** 死亡点标记：从死亡起显示，重生后再保留 deathMarkerSec 秒 */
+/** Death marker: shown from the moment of death, then deathMarkerSec longer after respawn */
 function updateDeathMarker(nowSec) {
   if (!myDeath || nowSec > markerUntil) {
     if (fx.markerVisible) fx.markerOff();
@@ -231,9 +283,9 @@ function updateDeathMarker(nowSec) {
   fx.marker.position.set(x, -CONFIG.snake.beadRadius, -y);
 }
 
-// ---------------- 事件 -> 特效 / 音效 / 公告 ----------------
+// ---------------- Events -> effects / sound / announcements ----------------
 
-/** 游戏坐标 -> 渲染坐标（展开到相机焦点附近） */
+/** Game coordinates -> render coordinates (unwrapped near the camera focus) */
 function toRender(p, out) {
   const x = anchor.x + toroidalDelta(anchor.x, p[0], MAP);
   const y = anchor.y + toroidalDelta(anchor.y, p[1], MAP);
@@ -242,7 +294,7 @@ function toRender(p, out) {
 
 function nearness(p) {
   const d = Math.hypot(toroidalDelta(anchor.x, p[0], MAP), toroidalDelta(anchor.y, p[1], MAP));
-  return clamp(1 - d / 45, 0, 1);      // 远处不出声，避免整张地图的动静都往耳朵里灌
+  return clamp(1 - d / 45, 0, 1);      // distant events stay silent, or the whole map is in your ears
 }
 
 function onEvents(evs) {
@@ -261,7 +313,7 @@ function onEvents(evs) {
         matchStreak = nowMs - lastMatchAt < 900 ? matchStreak + 1 : 0;
         lastMatchAt = nowMs;
         const color = fxColor(e.c);
-        // 先留下会闪烁的"虚拟珠"，告诉玩家是哪几颗被消掉了
+        // Leave blinking "ghost" beads behind first, so the player sees which ones cleared
         for (const p of e.pts) {
           fx.ghost(toRender(p, tmp), color);
           fx.burst(toRender(p, tmp), color, 12, 5, 0.4);
@@ -275,6 +327,9 @@ function onEvents(evs) {
         fx.burst(toRender(e.p, tmp), 0xffffff, 26, 8, 0.6);
         fx.ring(toRender(e.p, tmp), 0xffd45e, 7, 0.45);
         if (near > 0.05) A.sfxCrack(near);
+        // Scan wave over the grafted section, so it is obvious where those beads came from
+        views.flash(e.aid, e.n);
+        if (e.aid === myId) hud.toast(t('toast.severed', { name: e.bn, n: e.n }), 'gain');
         break;
       }
       case EV.HITHEAD: {
@@ -292,10 +347,10 @@ function onEvents(evs) {
           A.sfxDie();
           myDeath = { x: e.p[0], y: e.p[1] };
           myKiller = e.by;
-          markerUntil = Infinity;                 // 停顿期间一直显示，重生时改成有限时长
-          hud.toast(`你被 ${e.by} 撞掉了`, 'bad');
+          markerUntil = Infinity;                 // held through the pause, bounded on respawn
+          hud.toast(t('toast.killedBy', { by: e.by }), 'bad');
         } else {
-          hud.toast(`${e.name} 被 ${e.by} 淘汰`);
+          hud.toast(t('toast.eliminated', { name: e.name, by: e.by }));
         }
         break;
       }
@@ -303,11 +358,11 @@ function onEvents(evs) {
         if (e.id === myId) markerUntil = performance.now() / 1000 + CONFIG.snake.deathMarkerSec;
         break;
       case EV.WILD:
-        hud.toast('彩虹珠出现了！可当作任意颜色（看小地图）', 'wild');
+        hud.toast(t('toast.wild'), 'wild');
         break;
       case EV.WIN:
-        if (e.id === myId) { A.sfxWin(); hud.toast(`消完了！奖杯 +1（共 ${e.trophies}）`, 'win'); }
-        else hud.toast(`${e.name} 清空珠子，夺得第 ${e.trophies} 座奖杯`, 'win');
+        if (e.id === myId) A.sfxWin();             // your own win is shown by the pause panel
+        else hud.toast(t('toast.winOther', { name: e.name, trophies: e.trophies }), 'win');
         break;
     }
   }

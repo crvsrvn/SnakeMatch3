@@ -1,5 +1,6 @@
-// 道具渲染：按序号复用网格，缓慢自转 + 上下浮动。
-// 万能珠(WILD)用彩虹贴图、更大更亮、转得更快，便于在场上一眼认出来。
+// Item rendering: meshes are reused by index, rotating slowly and bobbing.
+// A WILD bead gets the rainbow texture, is bigger and brighter and spins faster, so it is
+// obvious on the field.
 
 import * as THREE from 'three';
 import { toroidalDelta } from '/shared/mathUtil.js';
@@ -35,7 +36,7 @@ export class ItemViews {
     for (let i = 0; i < items.length; i++) {
       const [, ix, iy, ci] = items[i];
       const ddx = toroidalDelta(anchor.x, ix, MAP), ddy = toroidalDelta(anchor.y, iy, MAP);
-      if (ddx * ddx + ddy * ddy > r2) continue;      // 视野外的道具不进渲染队列
+      if (ddx * ddx + ddy * ddy > r2) continue;      // items out of view never enter the render queue
       const wild = ci === WILD;
       let m = this.pool[n];
       if (!m) {

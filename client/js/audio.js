@@ -1,4 +1,5 @@
-// 全程序化合成音效（无音频文件）。玻璃珠对撞 = 极短的宽频瞬态 + 一簇高频非谐泛音 + 快速指数衰减。
+// Fully synthesised sound effects, no audio files. A glass bead impact is a very short
+// broadband transient plus a cluster of high inharmonic partials, decaying exponentially.
 
 let ctx = null;
 let master = null;
@@ -57,19 +58,19 @@ function transient(t0, gain, freq, q, dur) {
   src.stop(t0 + dur + 0.02);
 }
 
-/** 玻璃珠对撞：intensity 0..1 控制力度 */
+/** Glass beads colliding; intensity 0..1 sets how hard */
 export function sfxClink(intensity = 1) {
   if (!ctx) return;
   const t = ctx.currentTime;
-  const k = 0.9 + Math.random() * 0.35;               // 每次略微失谐，避免机械感
-  transient(t, 0.5 * intensity, 5200 * k, 1.2, 0.045); // 撞击瞬态
-  // 非谐泛音簇：玻璃/陶瓷的音色特征
+  const k = 0.9 + Math.random() * 0.35;               // detune a little each time, or it sounds mechanical
+  transient(t, 0.5 * intensity, 5200 * k, 1.2, 0.045); // the impact transient
+  // Inharmonic partials, which is what makes glass and ceramic sound like themselves
   [2350, 3610, 5290, 7150].forEach((f, i) => {
     tone(f * k, t + i * 0.001, 0.18 + i * 0.05, (0.22 / (i + 1)) * intensity, 'sine', f * k * 0.88);
   });
 }
 
-/** 断尾/吞并：更闷更重的一击 */
+/** Severing or grafting a tail: a duller, heavier hit */
 export function sfxCrack(intensity = 1) {
   if (!ctx) return;
   const t = ctx.currentTime;
@@ -78,7 +79,7 @@ export function sfxCrack(intensity = 1) {
   tone(1900 * (0.9 + Math.random() * 0.2), t, 0.14, 0.16 * intensity, 'sine', 1200);
 }
 
-/** 三消：上行铃音 */
+/** A match: a rising chime */
 export function sfxMatch(step = 0) {
   if (!ctx) return;
   const t = ctx.currentTime;

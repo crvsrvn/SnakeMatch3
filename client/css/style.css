@@ -14,7 +14,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 #stage,#labels{position:fixed;inset:0}
 #labels{pointer-events:none;overflow:hidden}
 
-/* ---------- 名牌 ---------- */
+/* ---------- Name tags ---------- */
 .nameTag{
   font:600 12px/1 system-ui,"PingFang SC","Microsoft YaHei",sans-serif;
   color:#fff;white-space:nowrap;padding:3px 7px;border-radius:999px;
@@ -23,6 +23,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 }
 .nameTag.self{background:rgba(30,110,160,.7);border-color:rgba(120,220,255,.6)}
 .nameTag.ai{opacity:.72;font-weight:500}
+.nameTag.shield::before{content:"\1F6E1";margin-right:4px}
 .nameTag i{font-style:normal;opacity:.75;margin-left:4px}
 
 /* ---------- HUD ---------- */
@@ -70,7 +71,8 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 #rules{padding:9px 12px;border-radius:12px;font-size:12px;line-height:1.85;
   background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(8px)}
 #rules .rHead{font-size:10px;letter-spacing:.16em;color:var(--dim);margin-bottom:2px}
-#rules b{color:var(--accent);font-weight:600}
+#rules b{color:var(--accent);font-weight:600;margin-right:8px}
+/* the label and the rule sit in separate elements so they can be translated apart */
 #rules i{font-style:normal;font-weight:600;
   background:linear-gradient(90deg,#ff4d5a,#ffd23f,#4ce07a,#43a8ff,#b06bff);
   -webkit-background-clip:text;background-clip:text;color:transparent}
@@ -85,10 +87,11 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 .toast.win{background:linear-gradient(90deg,#8b6b12,#c9992a);border-color:#ffd45e;color:#fff8e0}
 .toast.bad{background:rgba(70,16,26,.9);border-color:var(--bad)}
 .toast.wild{background:linear-gradient(90deg,#4a2a7a,#2a6a8a);border-color:#b6a2ff}
+.toast.gain{background:rgba(10,44,54,.9);border-color:#5ad2ff;color:#d6f4ff}
 @keyframes pop{from{transform:translateY(-10px) scale(.9);opacity:0}}
 @keyframes fade{to{opacity:0;transform:translateY(-6px)}}
 
-/* ---------- 死亡 ---------- */
+/* ---------- Death panel ---------- */
 #death{inset:0;display:grid;place-items:center}
 #death[hidden]{display:none}
 .deadCard{padding:22px 34px;border-radius:16px;text-align:center;
@@ -101,13 +104,30 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 .dCd{margin-top:12px;font-size:13px;color:#ffd8de}
 .dCd b{font-size:26px;color:#fff;font-variant-numeric:tabular-nums;margin-right:2px}
 
-/* ---------- 登录 ---------- */
+/* ---------- Win panel ---------- */
+#win{inset:0;display:grid;place-items:center}
+#win[hidden]{display:none}
+.winCard{padding:22px 34px;border-radius:16px;text-align:center;
+  background:rgba(56,38,6,.86);border:1px solid #ffd45e;
+  box-shadow:0 20px 60px rgba(0,0,0,.6);backdrop-filter:blur(6px);
+  animation:pop .25s ease-out}
+.wTitle{font-size:26px;font-weight:800;letter-spacing:.08em;color:#fff3cc}
+.wBy{margin-top:4px;font-size:13px;color:#ffdf9a}
+.wBy b{color:#fff}
+.wCd{margin-top:12px;font-size:13px;color:#ffdf9a}
+.wCd b{font-size:26px;color:#fff;font-variant-numeric:tabular-nums;margin-right:2px}
+
+/* ---------- Login ---------- */
 #login{position:fixed;inset:0;display:grid;place-items:center;z-index:10;
   background:radial-gradient(120% 90% at 50% 0%,#101a33 0%,#05070e 70%)}
 #login.gone{display:none}
 .panel{width:min(92vw,380px);padding:26px 26px 20px;border-radius:18px;
   background:rgba(10,16,30,.9);border:1px solid var(--line);
   box-shadow:0 30px 80px rgba(0,0,0,.6)}
+#langSwitch{display:flex;gap:4px;justify-content:flex-end;margin-bottom:6px}
+#langSwitch button{padding:3px 10px;font:inherit;font-size:11px;color:var(--dim);cursor:pointer;
+  background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:999px}
+#langSwitch button.on{color:var(--ink);border-color:var(--accent);background:rgba(90,210,255,.14)}
 .panel h1{margin:0;font-size:30px;letter-spacing:-.02em}
 .panel h1 span{color:var(--accent)}
 .sub{margin:6px 0 20px;font-size:13px;color:var(--dim)}

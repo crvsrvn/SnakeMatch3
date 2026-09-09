@@ -1,4 +1,5 @@
-// 键盘输入 -> 方向角/冲刺/跳跃。只在状态变化时发包（WebSocket 走 TCP，无需重复补发）。
+// Keyboard input -> heading, sprint, jump. Packets only go out on a change: WebSocket runs
+// over TCP, so there is nothing to re-send.
 
 const CODES = {
   up: ['KeyW', 'ArrowUp'],
@@ -41,7 +42,7 @@ export class Input {
     const dx = (this.held('right') ? 1 : 0) - (this.held('left') ? 1 : 0);
     const dy = (this.held('up') ? 1 : 0) - (this.held('down') ? 1 : 0);
     let dir = this.dir;
-    if (dx !== 0 || dy !== 0) dir = Math.atan2(dy, dx);   // 松开所有方向键时保持当前朝向
+    if (dx !== 0 || dy !== 0) dir = Math.atan2(dy, dx);   // releasing every key keeps the current heading
     if (dir === this.dir && this.sprint === this.lastSprint) return;
     this.dir = dir;
     this.lastSprint = this.sprint;

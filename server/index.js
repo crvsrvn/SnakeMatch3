@@ -1,4 +1,4 @@
-// 本地服务器：静态资源 + WebSocket 接入 + 固定步长世界循环。
+// Local server: static assets + WebSocket endpoint + the fixed-step world loop.
 
 import http from 'node:http';
 import os from 'node:os';
@@ -7,12 +7,12 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { WebSocketServer } from 'ws';
 
-import { CONFIG, SKIN_LABELS } from '../config/game.config.js';
+import { CONFIG } from '../config/game.config.js';
 import { C2S, S2C } from '../shared/protocol.js';
 import { Profiles } from './profiles.js';
 import { World } from './world.js';
 
-// 控制台窗口标题；映像名由 scripts/start.js 负责（见那里的说明）
+// Console window title. The image name is handled by scripts/start.js (see the notes there).
 process.title = 'SnakeMatch3_Server';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -42,7 +42,8 @@ function send(ws, obj) {
 const BANNED = ['<', '>', '&', '"', "'", '\\', '`'];
 
 function sanitizeNickname(raw, fallback) {
-  // 去掉控制字符与 HTML 敏感字符：昵称会被其他客户端渲染进名牌
+  // Strip control and HTML-sensitive characters: nicknames get rendered into other
+  // clients name tags
   let s = '';
   for (const ch of String(raw ?? '')) {
     const code = ch.codePointAt(0);
@@ -62,7 +63,6 @@ wss.on('connection', (ws, req) => {
   send(ws, {
     t: S2C.WELCOME,
     config: CONFIG,
-    skinLabels: SKIN_LABELS,
     nicknames: profiles.nicknames(ip),
     defaultNickname: world.freeDefaultName(),
     taken: world.takenNames(),
@@ -79,13 +79,14 @@ wss.on('connection', (ws, req) => {
         if (ctx.snakeId != null) return;
         const nickname = sanitizeNickname(msg.nickname, world.freeDefaultName());
         if (world.isNameTaken(nickname)) {
+          // Only the reason code travels; the client renders it in its own language.
           send(ws, {
             t: S2C.REJECT,
-            reason: `昵称「${nickname}」已经有人在用`,
+            reason: 'nickname-taken',
             suggestion: world.freeVariant(nickname),
             taken: world.takenNames(),
           });
-          console.log(`[!] ${ip} 想用已被占用的昵称 ${nickname}，已拒绝`);
+          console.log(`[!] ${ip} asked for the taken nickname ${nickname}, rejected`);
           return;
         }
         const skin = CONFIG.skins.includes(msg.skin) ? msg.skin : CONFIG.defaultSkin;
@@ -93,7 +94,7 @@ wss.on('connection', (ws, req) => {
         const s = world.addPlayer(profile, skin);
         ctx.snakeId = s.id;
         send(ws, { t: S2C.JOINED, id: s.id, nickname, skin, trophies: profile.trophies });
-        console.log(`[+] ${nickname} (${ip}) 加入，当前 ${world.snakes.size} 条蛇`);
+        console.log(`[+] ${nickname} (${ip}) joined, ${world.snakes.size} snake(s) now`);
         break;
       }
       case C2S.INPUT: {
@@ -117,16 +118,17 @@ wss.on('connection', (ws, req) => {
     if (ctx.snakeId != null) {
       const s = world.snakes.get(ctx.snakeId);
       world.removeSnake(ctx.snakeId);
-      console.log(`[-] ${s ? s.name : ctx.snakeId} (${ip}) 离开，剩余 ${world.snakes.size} 条蛇`);
+      console.log(`[-] ${s ? s.name : ctx.snakeId} (${ip}) left, ${world.snakes.size} snake(s) left`);
     }
     clients.delete(ws);
   });
 });
 
-// ---------- 固定步长循环 ----------
-// 定时器以远小于一个 tick 的周期唤醒：Windows 的定时器粒度约 15ms，若按整个 tick 唤醒，
-// 一次唤醒常常凑成 0 步或 2 步，广播间隔会在 30ms 与 60ms 之间跳。
-// 每个包携带 framesPerPacket 帧位置，客户端只做内插，不预测也不外推。
+// ---------- Fixed-step loop ----------
+// The timer wakes far more often than one tick: Windows timer granularity is around 15ms,
+// so waking once per tick usually produces 0 or 2 steps and the broadcast interval jumps
+// between 30ms and 60ms.
+// Each packet carries framesPerPacket frames; the client only interpolates, never predicts.
 const dt = 1 / CONFIG.net.tickRate;
 const FPP = Math.max(1, CONFIG.net.framesPerPacket);
 let acc = 0;
@@ -138,7 +140,7 @@ setInterval(() => {
   const now = process.hrtime.bigint();
   acc += Number(now - last) / 1e9;
   last = now;
-  if (acc > 0.5) acc = 0.5;          // 掉帧保护：不做追帧螺旋
+  if (acc > 0.5) acc = 0.5;          // drop frames instead of spiralling to catch up
   let steps = 0;
   while (acc >= dt && steps++ < 8) {
     world.step(dt);
@@ -162,17 +164,18 @@ setInterval(() => {
   evs = [];
 }, Math.max(1, Math.floor(500 / CONFIG.net.tickRate)));
 
-process.on('SIGINT', () => { profiles.flush(); process.exit(0); });
+process.on('SIGINT', () => { profiles.save(); process.exit(0); });
 
-// 端口就是"本机只能开一个服务器"的锁。run.js 会先探一次给出友好提示，
-// 但两次双击撞在一起时仍然要靠这里兜底。
-// 注意要同时挂在 wss 上：ws 会把 http 服务器的 error 转发到自己身上，
-// 而它的监听器注册得比这里早，只挂 server 的话仍然会以"未处理的 error 事件"崩掉。
+// The port is the "one server per machine" lock. run.js probes it first for a friendly
+// message, but two double-clicks racing each other still land here.
+// This has to be attached to wss as well: ws re-emits the http server error on itself, and
+// its listener is registered earlier, so hooking only `server` still crashes with an
+// unhandled error event.
 function onListenError(e) {
   if (e.code !== 'EADDRINUSE') throw e;
   console.error('');
-  console.error(`  端口 ${CONFIG.net.port} 已被占用，服务器多半已经在运行了。`);
-  console.error('  本机同时只能开一个实例；想进游戏请双击 run/2-打开游戏.cmd');
+  console.error(`  Port ${CONFIG.net.port} is already in use; the server is probably running.`);
+  console.error('  Only one instance per machine. To play, double-click run/2-open-game.cmd');
   console.error('');
   process.exit(1);
 }
@@ -186,8 +189,8 @@ server.listen(CONFIG.net.port, () => {
       if (ni.family === 'IPv4' && !ni.internal) addrs.push(ni.address);
     }
   }
-  console.log('SnakeMatch3 服务器已启动');
-  console.log(`  本机:   http://localhost:${CONFIG.net.port}`);
-  for (const a of addrs) console.log(`  局域网: http://${a}:${CONFIG.net.port}`);
-  console.log(`  AI ${CONFIG.ai.count} 条 / 道具 ${CONFIG.items.count} 个 / 地图 ${CONFIG.map.size}`);
+  console.log('SnakeMatch3 server is up');
+  console.log(`  local: http://localhost:${CONFIG.net.port}`);
+  for (const a of addrs) console.log(`  LAN:   http://${a}:${CONFIG.net.port}`);
+  console.log(`  ${CONFIG.ai.count} bots / ${CONFIG.items.count} items / map ${CONFIG.map.size}`);
 });

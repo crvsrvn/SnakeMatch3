@@ -1,10 +1,13 @@
-// 蛇的可视化：珠体网格池、昵称牌、朝向指示、出生保护罩。
-// 服务器给的是"取模到地图内"的坐标，这里沿链条逐颗展开成连续渲染坐标，
-// 这样蛇跨越边界时看起来是连成一条、平滑穿出去的。
-// 死亡停顿中的蛇没有珠子，只保留一个名牌挂在死亡点上。
+// Rendering a snake: the bead mesh pool, the bead aura, the name tag, the heading arrow,
+// the invulnerability shield, and the scan wave after a tail is grafted.
+// The server sends coordinates wrapped into the map; here the chain is unwrapped bead by
+// bead into continuous render coordinates, so a snake crossing an edge still looks like one
+// connected body sliding through.
+// A snake in its death pause has no beads, only a name tag left at the death spot.
 
 import * as THREE from 'three';
-import { makeBead, retintBead, SPINNING_SKINS } from './skins.js';
+import { makeBead, retintBead, SPINNING_SKINS, FLOW_SKINS, flowPhase } from './skins.js';
+import { Aura } from './aura.js';
 import { toroidalDelta } from '/shared/mathUtil.js';
 import { WILD } from '/shared/protocol.js';
 
@@ -14,20 +17,28 @@ export class SnakeViews {
     this.C = CONFIG;
     this.CSS2DObject = CSS2DObject;
     this.views = new Map();
+    this.t = 0;                                   // global clock driving the pattern flow
     this.arrowGeo = new THREE.ConeGeometry(0.3, 0.9, 3).rotateZ(-Math.PI / 2);
     this.bubbleGeo = new THREE.SphereGeometry(1, 20, 12);
+    this.shieldRingGeo = new THREE.TorusGeometry(1, 0.045, 6, 36);
+  }
+
+  /** A snake just grafted a tail: run a scan wave over the first n beads of its head */
+  flash(id, n) {
+    if (n > 0) this.views.get(id)?.startFlash(n);
   }
 
   colorOf(c) { return c === WILD ? null : this.C.colors[c]; }
 
-  /** 某点到相机焦点的环面平方距离 */
+  /** Squared toroidal distance from a point to the camera focus */
   near2(p, anchor) {
     const MAP = this.C.map.size;
     const dx = toroidalDelta(anchor.x, p.x, MAP), dy = toroidalDelta(anchor.y, p.y, MAP);
     return dx * dx + dy * dy;
   }
 
-  /** 整条蛇的所有珠子都在可见半径外才算远 —— 只看头会漏掉"头远尾近"的长蛇 */
+  /** A snake counts as far only when every bead is outside the radius -- testing the head
+   *  alone would drop long snakes whose head is far but whose tail is right here */
   isFar(s, anchor, r2) {
     const MAP = this.C.map.size;
     const beads = s.beads.length ? s.beads : (s.deathPos ? [s.deathPos] : null);
@@ -41,11 +52,13 @@ export class SnakeViews {
   }
 
   /**
-   * @param anchor 相机焦点(游戏坐标) —— 所有渲染坐标都展开到它附近
-   * @param cullRadius 超出这个距离的蛇整条隐藏：three.js 遇到 visible=false 的节点会
-   *                   直接跳过整棵子树，百人同场时这是渲染耗时的大头
+   * @param anchor camera focus in game coordinates; every render position is unwrapped near it
+   * @param cullRadius snakes beyond this are hidden whole: three.js skips the entire subtree
+   *                   of a node with visible=false, which is the single biggest render saving
+   *                   with a hundred players on the map
    */
   sync(snakes, anchor, myId, dt, cullRadius, labelRadius) {
+    this.t += dt;
     const seen = new Set();
     const r2 = cullRadius * cullRadius;
     const lr2 = labelRadius * labelRadius;
@@ -80,15 +93,46 @@ class SnakeView {
     this.arrow.position.y = -C.snake.beadRadius + 0.06;
     this.group.add(this.arrow);
 
-    this.bubble = new THREE.Mesh(owner.bubbleGeo, new THREE.MeshBasicMaterial({
-      color: 0x7fdcff, transparent: true, opacity: 0.16,
-      blending: THREE.AdditiveBlending, depthWrite: false,
-    }));
-    this.bubble.scale.setScalar(C.snake.beadRadius * 2.4);
-    this.bubble.visible = false;
-    this.group.add(this.bubble);
+    // Invulnerability shield: a translucent orb plus two orthogonal energy rings, rotating
+    // slowly, blinking fast when the protection is nearly out
+    const R = C.snake.beadRadius;
+    this.shieldMats = [
+      new THREE.MeshBasicMaterial({
+        color: 0x7fdcff, transparent: true, opacity: 0.22,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      }),
+      new THREE.MeshBasicMaterial({
+        color: 0xbfefff, transparent: true, opacity: 0.85,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      }),
+    ];
+    this.shield = new THREE.Group();
+    const orb = new THREE.Mesh(owner.bubbleGeo, this.shieldMats[0]);
+    orb.scale.setScalar(R * 2.7);
+    const ringA = new THREE.Mesh(owner.shieldRingGeo, this.shieldMats[1]);
+    ringA.scale.setScalar(R * 3.0);
+    ringA.rotation.x = -Math.PI / 2;
+    const ringB = new THREE.Mesh(owner.shieldRingGeo, this.shieldMats[1]);
+    ringB.scale.setScalar(R * 3.0);
+    this.shield.add(orb, ringA, ringB);
+    this.shield.visible = false;
+    this.shieldT = 0;
+    this.group.add(this.shield);
 
-    // 名牌用文本节点拼装，绝不把玩家昵称当 HTML 解析
+    // Scan wave for a grafted tail: a glowing orb riding the crest
+    this.waveMat = new THREE.MeshBasicMaterial({
+      color: 0xbfefff, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    this.wave = new THREE.Mesh(owner.bubbleGeo, this.waveMat);
+    this.wave.visible = false;
+    this.group.add(this.wave);
+    this.flashT = -1;
+    this.flashN = 0;
+
+    this.aura = new Aura(this.group, this.skin, R, C.graphics.auraScale);
+
+    // The name tag is assembled from text nodes; a nickname is never parsed as HTML
     const el = document.createElement('div');
     el.className = 'nameTag' + (data.ai ? ' ai' : '');
     this.nameNode = document.createTextNode(data.name);
@@ -101,6 +145,8 @@ class SnakeView {
 
   hide() { this.group.visible = false; }
 
+  startFlash(n) { this.flashT = 0; this.flashN = n; }
+
   update(s, anchor, isSelf, dt, labelR2) {
     this.group.visible = true;
     const C = this.o.C;
@@ -108,10 +154,13 @@ class SnakeView {
     const R = C.snake.beadRadius;
     const n = s.beads.length;
 
-    if (n === 0) {                                  // 死亡停顿中：只把名牌留在死亡点
+    if (n === 0) {                                  // in the death pause: only the name tag stays
       for (const m of this.meshes) m.visible = false;
       this.arrow.visible = false;
-      this.bubble.visible = false;
+      this.shield.visible = false;
+      this.wave.visible = false;
+      this.flashT = -1;
+      this.aura.hide();
       if (s.deathPos) {
         const x = anchor.x + toroidalDelta(anchor.x, s.deathPos.x, MAP);
         const y = anchor.y + toroidalDelta(anchor.y, s.deathPos.y, MAP);
@@ -120,13 +169,27 @@ class SnakeView {
       } else {
         this.label.visible = false;
       }
-      this.setLabel(s.name, '×', isSelf);
+      this.setLabel(s.name, '×', isSelf, false);
       return;
     }
     this.arrow.visible = true;
     this.label.visible = isSelf || this.o.near2(s.beads[0], anchor) < labelR2;
 
-    // 沿链条展开：第 0 颗对齐到相机焦点附近，其余相对前一颗取环面最短路
+    // Scan wave: the crest sweeps from the joint (index flashN-1) to the new head (index 0)
+    const flashDur = C.graphics.severFlashSec;
+    let wave = -1, waveU = 0;
+    if (this.flashT >= 0) {
+      this.flashT += dt;
+      waveU = this.flashT / flashDur;
+      if (waveU >= 1) this.flashT = -1;
+      else wave = (1 - waveU) * (Math.min(this.flashN, n) - 1);
+    }
+
+    const flow = FLOW_SKINS.has(this.skin);
+    const flowT = this.o.t;
+
+    // Unwrap along the chain: bead 0 lands near the camera focus, every other bead takes
+    // the shortest toroidal step from the one before it
     let px = anchor.x + toroidalDelta(anchor.x, s.beads[0].x, MAP);
     let py = anchor.y + toroidalDelta(anchor.y, s.beads[0].y, MAP);
 
@@ -136,22 +199,37 @@ class SnakeView {
         py += toroidalDelta(py, s.beads[i].y, MAP);
       }
       const colorHex = this.o.colorOf(s.colors[i]);
+      const phase = flow ? flowPhase(i, flowT, C.graphics.flowSpeed, C.graphics.flowSpacing) : -1;
       let m = this.meshes[i];
       if (!m) {
-        m = makeBead(this.skin, colorHex, R, C.graphics.shadows);
+        m = makeBead(this.skin, colorHex, R, C.graphics.shadows, phase);
         this.group.add(m);
         this.meshes[i] = m;
       } else {
-        retintBead(m, this.skin, colorHex);
+        retintBead(m, this.skin, colorHex, phase);
         m.visible = true;
       }
       m.position.set(px, s.beads[i].z, -py);
-      m.scale.setScalar(i === 0 ? R * 1.18 : R);
-      if (colorHex === null) m.rotation.y += dt * 1.8;                 // 万能珠转得快，好认
+      let scale = i === 0 ? R * 1.18 : R;
+      if (wave >= 0 && i < this.flashN) {
+        const k = Math.max(0, 1 - Math.abs(i - wave) / 3);
+        scale *= 1 + 0.55 * k * k;
+      }
+      m.scale.setScalar(scale);
+      if (colorHex === null) m.rotation.y += dt * 1.8;                 // wild beads spin fast, to stand out
       else if (SPINNING_SKINS.has(this.skin)) m.rotation.y += dt * 0.7;
       if (i === 0) this.headPos.copy(m.position);
     }
     for (let i = n; i < this.meshes.length; i++) this.meshes[i].visible = false;
+
+    this.wave.visible = wave >= 0;
+    if (wave >= 0) {
+      this.wave.position.copy(this.meshes[Math.max(0, Math.round(wave))].position);
+      this.wave.scale.setScalar(R * (2.0 + waveU * 1.8));
+      this.waveMat.opacity = 0.5 * (1 - waveU);
+    }
+
+    this.aura.update(dt, this.meshes, n);
 
     this.arrow.position.set(
       this.headPos.x + Math.cos(s.dir) * 1.05,
@@ -162,24 +240,37 @@ class SnakeView {
     this.arrow.material.opacity = isSelf ? 0.6 : 0.28;
     this.arrow.material.color.set(isSelf ? 0x9ff0ff : 0xffffff);
 
-    this.bubble.visible = s.iv;
-    if (s.iv) this.bubble.position.copy(this.headPos);
+    // s.iv is the seconds of invulnerability left: solid while there is time, blinking over
+    // the last 0.6s to warn that the protection is about to end
+    const iv = s.iv;
+    if (iv > 0) {
+      this.shieldT += dt;
+      this.shield.position.copy(this.headPos);
+      this.shield.rotation.y += dt * 1.3;
+      this.shield.scale.setScalar(1 + Math.sin(this.shieldT * 6) * 0.07);
+      this.shield.visible = iv > 0.6 || Math.sin(this.shieldT * 26) > -0.25;
+    } else {
+      this.shield.visible = false;
+    }
 
     this.label.position.set(this.headPos.x, this.headPos.y + R * 2.6, this.headPos.z);
-    this.setLabel(s.name, String(s.colors.length), isSelf);
+    this.setLabel(s.name, String(s.colors.length), isSelf, iv > 0);
   }
 
-  setLabel(name, count, isSelf) {
+  setLabel(name, count, isSelf, shielded) {
     if (this.nameNode.nodeValue !== name) this.nameNode.nodeValue = name;
     if (this.countEl.textContent !== count) this.countEl.textContent = count;
     this.labelEl.classList.toggle('self', isSelf);
+    this.labelEl.classList.toggle('shield', shielded);
   }
 
   dispose() {
     this.label.removeFromParent();
     this.labelEl.remove();
+    this.aura.dispose();
     this.o.scene.remove(this.group);
     this.arrow.material.dispose();
-    this.bubble.material.dispose();
+    this.waveMat.dispose();
+    for (const m of this.shieldMats) m.dispose();
   }
 }

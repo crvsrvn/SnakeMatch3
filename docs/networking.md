@@ -61,7 +61,7 @@ const wss = new WebSocketServer({ server });  // 同端口的 WebSocket 升级
 
 | 类型 | 内容 |
 |---|---|
-| `welcome` | `{config, skinLabels, nicknames[], taken[], defaultNickname, ip}` |
+| `welcome` | `{config, nicknames[], taken[], defaultNickname, ip}` |
 | `joined` | `{id, nickname, skin, trophies}` |
 | `reject` | `{reason, suggestion, taken[]}` |
 | `state` | `{f: [帧, 帧], items: [...], ev: [...]}` ← 主力 |
@@ -77,7 +77,7 @@ const wss = new WebSocketServer({ server });  // 同端口的 WebSocket 升级
       "st": 123.45,                   // 服务器模拟时间（秒），插值的唯一时间基准
       "snakes": [
         {
-          "id": 7, "n": "贪吃蛇1号", "sk": "aurora", "ai": 0,
+          "id": 7, "n": "Snake 1", "sk": "aurora", "ai": 0,
           "tr": 2,                    // 奖杯
           "d": 1.571,                 // 朝向弧度（画地面箭头 + 头对头判定的展示）
           "iv": 0,                    // 出生保护中
@@ -277,7 +277,7 @@ AOI 之后如果还想再压一档：
 
 - `/healthz` 健康检查
 - 指标：单帧耗时 p99、在线人数、出口带宽、每秒事件数（前三个 `tests/stress.js` 已经在量了）
-- 优雅关闭：收到 SIGTERM 时广播"服务器维护中"，`profiles.flush()` 后再退出
+- 优雅关闭：收到 SIGTERM 时广播"服务器维护中"，`profiles.save()` 后再退出
 
 ---
 

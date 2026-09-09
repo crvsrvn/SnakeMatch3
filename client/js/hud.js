@@ -1,6 +1,8 @@
-// HUD：自身状态（含珠子颜色序列，用来规划三消）、在线排行、公告、网络指示、死亡面板。
+// HUD: own status (including the bead color sequence, for planning matches), live
+// leaderboard, announcements, network readout, and the death / win pause panels.
 
 import { WILD } from '/shared/protocol.js';
+import { t, onLangChange } from './i18n.js';
 
 export class Hud {
   constructor(CONFIG) {
@@ -11,14 +13,21 @@ export class Hud {
       beads: $('beads'), board: $('boardList'), toasts: $('toasts'),
       fps: $('fps'), frameMs: $('frameMs'), ping: $('ping'),
       death: $('death'), killer: $('dKiller'), count: $('dCount'),
+      win: $('win'), wTrophy: $('wTrophy'), wCount: $('wCount'),
     };
     this.lastBeads = '';
     this.lastBoard = '';
     this.boardAcc = 9;
+    this.online = 0;
     this.boardTitle = $('boardTitle');
+    onLangChange(() => this.renderBoardTitle());
   }
 
   show() { this.el.hud.hidden = false; }
+
+  renderBoardTitle() {
+    if (this.boardTitle) this.boardTitle.textContent = t('hud.online', { n: this.online });
+  }
 
   setSelf(s) {
     this.el.name.textContent = s.name;
@@ -34,8 +43,8 @@ export class Hud {
     }).join('');
   }
 
-  /** 只显示前 maxRows 名（自己一定在内），并按 board.updateHz 限频 —— 百人同场时
-   *  每帧重建上百行 innerHTML 是纯粹的浪费 */
+  /** Only the top maxRows (you are always included), rate limited to board.updateHz --
+   *  rebuilding a hundred rows of innerHTML every frame is pure waste with a full server. */
   setBoard(snakes, myId, dt) {
     this.boardAcc += dt;
     if (this.boardAcc < 1 / this.C.board.updateHz) return;
@@ -46,12 +55,15 @@ export class Hud {
     let rows = all.slice(0, max);
     const meRank = all.findIndex((s) => s.id === myId);
     if (meRank >= max) rows = [...all.slice(0, max - 1), all[meRank]];
-    if (this.boardTitle) this.boardTitle.textContent = `在线 ${all.length}`;
+    if (this.online !== all.length) {
+      this.online = all.length;
+      this.renderBoardTitle();
+    }
 
     const html = rows.map((s) => {
       const rank = all.indexOf(s) + 1;
       const cls = [s.id === myId ? 'me' : '', s.dead ? 'out' : ''].filter(Boolean).join(' ');
-      const len = s.dead ? '💀' : s.colors.length;
+      const len = s.dead ? (s.win ? '🏆' : '💀') : s.colors.length;
       return `<li class="${cls}"><span><i class="rank">${rank}</i>${s.ai ? '🤖 ' : ''}${escapeHtml(s.name)}</span>`
         + `<span><span class="len">${len}</span> <em>🏆${s.trophies}</em></span></li>`;
     }).join('');
@@ -60,13 +72,22 @@ export class Hud {
     this.el.board.innerHTML = html;
   }
 
-  /** 死亡面板：remain 为剩余秒数，null 表示隐藏 */
-  setDeath(remain, killer) {
-    if (remain == null) { this.el.death.hidden = true; return; }
-    this.el.death.hidden = false;
-    if (killer && this.el.killer.textContent !== killer) this.el.killer.textContent = killer;
+  /** Pause panel: death and win share one countdown. remain === null hides both. */
+  setPause(remain, won, killer, trophies) {
+    const el = won ? this.el.win : this.el.death;
+    const other = won ? this.el.death : this.el.win;
+    if (!other.hidden) other.hidden = true;
+    if (remain == null) { el.hidden = true; return; }
+    el.hidden = false;
+    if (won) {
+      const n = String(trophies);
+      if (this.el.wTrophy.textContent !== n) this.el.wTrophy.textContent = n;
+    } else if (killer && this.el.killer.textContent !== killer) {
+      this.el.killer.textContent = killer;
+    }
+    const count = won ? this.el.wCount : this.el.count;
     const n = String(Math.max(1, Math.ceil(remain)));
-    if (this.el.count.textContent !== n) this.el.count.textContent = n;
+    if (count.textContent !== n) count.textContent = n;
   }
 
   toast(text, kind = '') {

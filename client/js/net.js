@@ -1,6 +1,7 @@
-// 网络层：WebSocket 收发 + 快照缓冲 + 时间插值采样。
-// 服务器每个包携带 framesPerPacket 帧位置；客户端把渲染时钟落后 interpDelayMs，
-// 始终在两帧真实的服务器位置之间做**内插**，不做任何预测或外推。
+// Networking: WebSocket transport, snapshot buffer, and interpolated sampling.
+// Each server packet carries framesPerPacket frames of positions. The client runs its render
+// clock interpDelayMs behind and always interpolates *between* two real server frames --
+// there is no prediction and no extrapolation.
 
 import { C2S, S2C } from '/shared/protocol.js';
 import { toroidalDelta, wrap, clamp } from '/shared/mathUtil.js';
@@ -8,14 +9,15 @@ import { toroidalDelta, wrap, clamp } from '/shared/mathUtil.js';
 export class Net {
   constructor(handlers) {
     this.h = handlers;
-    this.buf = [];           // 帧队列，元素 {st, snakes}
+    this.buf = [];           // frame queue of {st, snakes}
     this.items = [];
     this.renderT = null;
     this.latestSt = 0;
     this.ping = 0;
     this.mapSize = 0;
     this.interpDelay = 0.08;
-    this.maxStep = 3;        // 两帧之间蛇头位移超过它就判定为瞬移(重生/断尾接管)，直接吸附
+    this.maxStep = 3;        // a head moving further than this between frames is a teleport
+                             // (respawn or tail graft) and snaps instead of interpolating
     this.bufCap = 40;
     this.ws = null;
     this.myId = null;
@@ -75,20 +77,21 @@ export class Net {
   }
 
   /**
-   * 推进渲染时钟。纠偏靠**微调播放速率**而不是直接拨表：
-   * 收包间隔本身有抖动，每收一包就把 renderT 拉向目标会让它非单调，画面就是一顿一顿的。
+   * Advance the render clock. Corrections nudge the playback *rate* rather than setting the
+   * clock: packet arrival is jittery, and pulling renderT to the target on every packet makes
+   * it non-monotonic, which is exactly what stutter looks like.
    */
   update(dt) {
     if (this.renderT === null) return;
     const err = (this.latestSt - this.interpDelay) - this.renderT;
-    if (Math.abs(err) > 0.4) {           // 卡顿/长时间无包后直接对齐，不慢慢爬
+    if (Math.abs(err) > 0.4) {           // after a hitch or a long gap, snap rather than crawl
       this.renderT += err;
       return;
     }
     this.renderT += dt * clamp(1 + err * 2, 0.9, 1.1);
   }
 
-  /** 取出插值后的世界状态（游戏坐标，已取模到地图内） */
+  /** The interpolated world state, in game coordinates wrapped into the map */
   sample() {
     const buf = this.buf;
     if (buf.length === 0 || this.renderT === null) return null;
@@ -105,10 +108,11 @@ export class Net {
       const n = s.c.length;
       const beads = new Array(n);
 
-      // 瞬移判定：重生/断尾接管会让头部一步跨很远，这种帧不能插值，只能吸附
+      // Teleport test: respawn and tail grafting move the head a long way in one step, and
+      // such a frame cannot be interpolated, only snapped to
       let teleported = false;
       if (p && a !== b) {
-        if ((p.c.length === 0) !== (n === 0)) teleported = true;      // 死/生切换
+        if ((p.c.length === 0) !== (n === 0)) teleported = true;      // alive/dead flip
         else if (n > 0) {
           const dx = toroidalDelta(p.b[0], s.b[0], size);
           const dy = toroidalDelta(p.b[1], s.b[1], size);
@@ -116,15 +120,17 @@ export class Net {
         }
       }
 
-      // 第 i 颗珠恒在"头后 i×间距"处，所以同下标 = 同一个槽位：
-      // 吃/三消只改变槽位的数量与颜色，不改变槽位几何，因此长度变了也照样能插值，
-      // 只是多出来的槽位没有前一帧的对应物，直接取新帧。
+      // Bead i always sits i spacings behind the head, so the same index is the same slot:
+      // eating and matching change how many slots there are and what color they carry, never
+      // the geometry of a slot. Length changes therefore still interpolate; only the slots
+      // that did not exist last frame are taken straight from the new frame.
       const shared = (p && alpha < 1 && !teleported) ? Math.min(n, p.c.length) : 0;
       for (let k = 0; k < n; k++) {
         const bx = s.b[k * 3], by = s.b[k * 3 + 1], bz = s.b[k * 3 + 2];
         if (k >= shared) { beads[k] = { x: bx, y: by, z: bz }; continue; }
         const ax = p.b[k * 3], ay = p.b[k * 3 + 1], az = p.b[k * 3 + 2];
-        // 跨越地图边界时必须走环面最短路，否则会横穿整张地图
+        // Crossing an edge has to take the shortest toroidal path, or the bead flies across
+        // the whole map
         beads[k] = {
           x: wrap(ax + toroidalDelta(ax, bx, size) * alpha, size),
           y: wrap(ay + toroidalDelta(ay, by, size) * alpha, size),
@@ -134,8 +140,9 @@ export class Net {
 
       return {
         id: s.id, name: s.n, skin: s.sk, ai: !!s.ai, trophies: s.tr,
-        dir: s.d, iv: !!s.iv, colors: s.c, beads,
+        dir: s.d, iv: s.iv || 0, colors: s.c, beads,   // iv = seconds of invulnerability left
         dead: s.dead || 0,
+        win: !!s.win,
         deathPos: s.dp ? { x: s.dp[0], y: s.dp[1] } : null,
         tp: teleported,
       };

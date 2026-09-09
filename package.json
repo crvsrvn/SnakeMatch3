@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "俯视角局域网多人贪吃蛇三消对战（three.js + Node 权威服务器）",
+  "description": "Top-down LAN multiplayer snake meets match-3 (three.js + an authoritative Node server)",
   "scripts": {
     "start": "node scripts/start.js",
     "dev": "node --watch server/index.js",

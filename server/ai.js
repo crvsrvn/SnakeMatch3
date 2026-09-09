@@ -1,4 +1,4 @@
-// AI 蛇：只做简单随机游走 + 不撞自己，不加速、不跳跃。
+// Bot snakes: a random walk that avoids its own body. No sprinting, no jumping.
 
 import { CONFIG } from '../config/game.config.js';
 import { randRange, toroidalDelta } from '../shared/mathUtil.js';
@@ -19,7 +19,7 @@ export class AIBrain {
     this.avoidSelf(snake);
   }
 
-  /** 前方 lookAhead 处若压到自己的身体，就朝更空的一侧硬转 */
+  /** If the point lookAhead units ahead lands on our own body, turn hard to the emptier side */
   avoidSelf(snake) {
     const beads = snake.beads;
     if (beads.length <= S.selfCollisionMinIndex) return;

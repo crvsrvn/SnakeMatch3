@@ -1,6 +1,8 @@
-// 特效：粒子迸溅（一个 Points 池）+ 扩散冲击环 + 三消"虚拟珠" + 死亡点标记。
-// 全部对象预分配，运行期零 GC。
-// 用叠加混合下"颜色乘以剩余寿命"来做淡出，避免为此写自定义 shader。
+// Effects: a particle burst (one pooled Points), expanding shock rings, "ghost" beads for
+// matches, and the death marker.
+// Everything is preallocated, so nothing is garbage collected while playing.
+// Fading is done by multiplying color by remaining lifetime under additive blending, which
+// avoids writing a custom shader for it.
 
 import * as THREE from 'three';
 import { ghostGeometry, makeGhostMaterial } from './skins.js';
@@ -15,7 +17,7 @@ export class Effects {
     this.C = CONFIG;
     this.pos = new Float32Array(MAX_P * 3);
     this.col = new Float32Array(MAX_P * 3);
-    this.base = new Float32Array(MAX_P * 3);   // 粒子原始颜色
+    this.base = new Float32Array(MAX_P * 3);   // original particle color
     this.vel = new Float32Array(MAX_P * 3);
     this.life = new Float32Array(MAX_P);
     this.life0 = new Float32Array(MAX_P);
@@ -27,7 +29,7 @@ export class Effects {
     this.geo = geo;
 
     this.points = new THREE.Points(geo, new THREE.PointsMaterial({
-      size: 0.38, map: sprite(), vertexColors: true, transparent: true,
+      size: 0.38, map: pointSprite(), vertexColors: true, transparent: true,
       depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true,
     }));
     this.points.frustumCulled = false;
@@ -47,7 +49,8 @@ export class Effects {
     }
     this.ringCursor = 0;
 
-    // 三消虚拟珠：被消掉的珠子先原地闪几下再消失，让玩家看清是哪几颗
+    // Ghost beads: a cleared bead blinks in place for a moment, so the player sees which
+    // ones went
     this.ghosts = [];
     for (let i = 0; i < MAX_GHOST; i++) {
       const m = new THREE.Mesh(ghostGeometry(), makeGhostMaterial());
@@ -65,7 +68,7 @@ export class Effects {
     for (let i = 0; i < MAX_P; i++) this.pos[i * 3 + 1] = -9999;
   }
 
-  /** @param {THREE.Vector3} p three 场景坐标 */
+  /** @param {THREE.Vector3} p position in three.js scene coordinates */
   burst(p, colorHex, count, speed, spread = 1) {
     const c = new THREE.Color(colorHex);
     for (let i = 0; i < count; i++) {
@@ -96,7 +99,7 @@ export class Effects {
     r.t = 0; r.dur = dur; r.scale = scale;
   }
 
-  /** 三消虚拟珠：原地上浮 + 闪烁数次后消失 */
+  /** Ghost bead: floats up, blinks a few times, disappears */
   ghost(p, colorHex) {
     const g = this.ghosts[this.ghostCursor];
     this.ghostCursor = (this.ghostCursor + 1) % MAX_GHOST;
@@ -123,7 +126,7 @@ export class Effects {
         col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = 0;
         continue;
       }
-      vel[i * 3 + 1] -= 14 * dt;                       // 重力
+      vel[i * 3 + 1] -= 14 * dt;                       // gravity
       pos[i * 3] += vel[i * 3] * dt;
       pos[i * 3 + 1] += vel[i * 3 + 1] * dt;
       pos[i * 3 + 2] += vel[i * 3 + 2] * dt;
@@ -152,7 +155,7 @@ export class Effects {
       if (u >= 1) { g.t = -1; g.mesh.visible = false; continue; }
       g.mesh.position.y = g.y0 + u * 1.5;
       g.mesh.scale.setScalar(this.C.snake.beadRadius * (1 + u * 0.55));
-      // 前 70% 闪烁三下，之后淡出
+      // Blink three times over the first 70%, then fade out
       const blink = 0.55 + 0.45 * Math.cos(g.t * 40);
       g.mesh.material.opacity = u < 0.7 ? 0.95 * blink : 0.95 * blink * (1 - (u - 0.7) / 0.3);
     }
@@ -166,7 +169,7 @@ export class Effects {
   }
 }
 
-/** 死亡点标记：地面脉冲圆环 + 一道竖直光柱 */
+/** Death marker: a pulsing ring on the ground plus a vertical beam */
 function makeDeathMarker() {
   const g = new THREE.Group();
 
@@ -194,7 +197,9 @@ function makeDeathMarker() {
   return g;
 }
 
-function sprite() {
+/** Soft round particle sprite, shared by the effects and the bead aura */
+export function pointSprite() {
+  if (spriteTex) return spriteTex;
   const N = 64;
   const c = document.createElement('canvas');
   c.width = c.height = N;
@@ -205,7 +210,8 @@ function sprite() {
   grd.addColorStop(1, 'rgba(255,255,255,0)');
   g.fillStyle = grd;
   g.fillRect(0, 0, N, N);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+  spriteTex = new THREE.CanvasTexture(c);
+  spriteTex.colorSpace = THREE.SRGBColorSpace;
+  return spriteTex;
 }
+let spriteTex = null;

@@ -1,8 +1,9 @@
-// 无头压力/回归测试：在缩小的地图里塞满 AI，长时间跑模拟，检查不变量。
-// 运行： node tests/sim.js
+// Headless stress and regression test: pack bots into a shrunken map, simulate for a long
+// time, and check the invariants.
+// Run with: node tests/sim.js
 import { CONFIG } from '../config/game.config.js';
 
-// 必须在动态 import(world) 之前改配置：各模块在载入时会缓存派生常量
+// Config has to change before world is imported: modules cache derived constants on load
 CONFIG.map.size = 44;
 CONFIG.ai.count = 12;
 CONFIG.items.count = 30;
@@ -11,23 +12,23 @@ CONFIG.items.wild.intervalSec = 8;
 const { World } = await import('../server/world.js');
 const { EV, WILD } = await import('../shared/protocol.js');
 
-// ---- 运动学：冲刺应该更快但更难拐弯 ----
+// ---- Kinematics: sprinting should be faster but much harder to turn ----
 {
   const { Snake } = await import('../server/snake.js');
   const radius = (sprint) => {
-    const s = new Snake(1, 't', false, 'glass');   // isAI=false，否则不会真的冲刺
+    const s = new Snake(1, 't', false, 'glass');   // isAI=false, or sprinting is ignored
     s.respawn(20, 20, 0, [0, 1, 2], 0);
     s.sprint = sprint;
-    s.targetDir = Math.PI;                          // 一直要求掉头 -> 一直以最大角速度转
+    s.targetDir = Math.PI;                          // always ask for a U-turn -> always turn at max rate
     const dt = 1 / CONFIG.net.tickRate;
-    return s.speed() / s.turnRate();                // 最小转弯半径 = 速度 / 角速度
+    return s.speed() / s.turnRate();                // min turn radius = speed / angular speed
   };
   const normal = radius(false), sprinting = radius(true);
   const expected = CONFIG.snake.sprintMultiplier / CONFIG.snake.sprintTurnFactor;
-  console.log(`转弯半径: 常速 ${normal.toFixed(2)}  冲刺 ${sprinting.toFixed(2)}`
-    + `  (${(sprinting / normal).toFixed(2)}x，期望 ${expected.toFixed(2)}x)`);
-  if (Math.abs(sprinting / normal - expected) > 1e-6) throw new Error('冲刺转弯半径不符合配置');
-  if (sprinting <= normal) throw new Error('冲刺时反而更好拐弯了');
+  console.log(`turn radius: normal ${normal.toFixed(2)}  sprinting ${sprinting.toFixed(2)}`
+    + `  (${(sprinting / normal).toFixed(2)}x, expected ${expected.toFixed(2)}x)`);
+  if (Math.abs(sprinting / normal - expected) > 1e-6) throw new Error('sprint turn radius does not match the config');
+  if (sprinting <= normal) throw new Error('sprinting turns better than walking');
 }
 
 const world = new World({ addTrophy() {} });
@@ -41,24 +42,24 @@ for (let i = 0; i < SECONDS / dt; i++) {
   ticks++;
   for (const e of world.events) counts[e.t] = (counts[e.t] || 0) + 1;
   maxItems = Math.max(maxItems, world.items.length);
-  if (world.items.length > CONFIG.items.maxOnMap) throw new Error(`道具超上限: ${world.items.length}`);
+  if (world.items.length > CONFIG.items.maxOnMap) throw new Error(`too many items: ${world.items.length}`);
 
   for (const s of world.snakes.values()) {
     if (s.deadUntil) {
       deadSeen++;
-      if (s.colors.length || s.beads.length) throw new Error('死亡停顿中不应还有珠子');
-      if (!s.deathPos) throw new Error('死亡缺少死亡点');
+      if (s.colors.length || s.beads.length) throw new Error('a paused snake should have no beads');
+      if (!s.deathPos) throw new Error('a dead snake has no death position');
       continue;
     }
     maxLen = Math.max(maxLen, s.colors.length);
-    if (s.colors.length === 0) throw new Error('存活的蛇长度为 0（应已判胜并重生）');
-    if (s.colors.length > CONFIG.snake.maxLength) throw new Error(`超长: ${s.colors.length}`);
-    if (s.beads.length !== s.colors.length) throw new Error('珠子数与颜色数不一致');
+    if (s.colors.length === 0) throw new Error('a live snake has length 0 (it should have won and respawned)');
+    if (s.colors.length > CONFIG.snake.maxLength) throw new Error(`over max length: ${s.colors.length}`);
+    if (s.beads.length !== s.colors.length) throw new Error('bead count and color count disagree');
     for (const b of s.beads) {
-      if (!Number.isFinite(b.x) || !Number.isFinite(b.y) || !Number.isFinite(b.z)) throw new Error('坐标 NaN');
-      if (b.x < 0 || b.x > CONFIG.map.size || b.y < 0 || b.y > CONFIG.map.size) throw new Error(`越界 ${b.x},${b.y}`);
+      if (!Number.isFinite(b.x) || !Number.isFinite(b.y) || !Number.isFinite(b.z)) throw new Error('coordinate is NaN');
+      if (b.x < 0 || b.x > CONFIG.map.size || b.y < 0 || b.y > CONFIG.map.size) throw new Error(`out of bounds ${b.x},${b.y}`);
     }
-    // 相邻珠间距应接近 beadSpacing（跨越边界时用环面距离）
+    // Neighbouring beads should sit about beadSpacing apart (toroidal distance across edges)
     for (let k = 1; k < s.beads.length; k++) {
       const p = s.beads[k - 1], q = s.beads[k];
       const h = CONFIG.map.size / 2;
@@ -66,7 +67,7 @@ for (let i = 0; i < SECONDS / dt; i++) {
       if (dx > h) dx -= CONFIG.map.size; else if (dx < -h) dx += CONFIG.map.size;
       if (dy > h) dy -= CONFIG.map.size; else if (dy < -h) dy += CONFIG.map.size;
       const d = Math.hypot(dx, dy);
-      if (d > CONFIG.snake.beadSpacing * 1.6) throw new Error(`珠子断开: ${d.toFixed(2)} (蛇 ${s.name} 第 ${k} 节)`);
+      if (d > CONFIG.snake.beadSpacing * 1.6) throw new Error(`chain broken: ${d.toFixed(2)} (snake ${s.name}, bead ${k})`);
     }
   }
   if (i % 30 === 0) {
@@ -77,18 +78,20 @@ for (let i = 0; i < SECONDS / dt; i++) {
 
 const wildOnMap = world.items.filter((it) => it.c === WILD).length;
 const packetHz = CONFIG.net.tickRate / CONFIG.net.framesPerPacket;
-console.log(`模拟 ${SECONDS}s / ${ticks} tick，蛇 ${world.snakes.size} 条`);
-console.log('事件统计:', counts);
-console.log(`最长蛇 ${maxLen}  道具峰值 ${maxItems}(上限 ${CONFIG.items.maxOnMap}，当前万能珠 ${wildOnMap})`);
-console.log(`单包最大字节 ${maxBytes} (${(maxBytes * packetHz / 1024).toFixed(1)} KB/s 每客户端)`);
+console.log(`simulated ${SECONDS}s / ${ticks} ticks, ${world.snakes.size} snakes`);
+console.log('event counts:', counts);
+console.log(`longest snake ${maxLen}  peak items ${maxItems} (cap ${CONFIG.items.maxOnMap}, ${wildOnMap} wild right now)`);
+console.log(`largest packet ${maxBytes} bytes (${(maxBytes * packetHz / 1024).toFixed(1)} KB/s per client)`);
 
-if (!deadSeen) throw new Error('整场没有出现死亡停顿状态');
+if (!deadSeen) throw new Error('no snake was ever in a death pause');
 const need = [EV.EAT, EV.MATCH, EV.HITBODY, EV.DEATH, EV.RESPAWN, EV.WILD];
 const missing = need.filter((k) => !counts[k]);
-if (missing.length) throw new Error(`预期事件未出现: ${missing.join(',')}`);
-if (counts[EV.DEATH] !== counts[EV.RESPAWN]) {
-  // 允许最后几帧还有蛇处在停顿中
-  const diff = counts[EV.DEATH] - counts[EV.RESPAWN];
-  if (diff < 0 || diff > world.snakes.size) throw new Error(`死亡/重生数量不匹配: ${counts[EV.DEATH]} vs ${counts[EV.RESPAWN]}`);
+if (missing.length) throw new Error(`expected events never fired: ${missing.join(',')}`);
+// Deaths and wins both pause before respawning, so together they should match the respawns
+const paused = (counts[EV.DEATH] || 0) + (counts[EV.WIN] || 0);
+if (paused !== counts[EV.RESPAWN]) {
+  // Allow for snakes still paused on the last few frames
+  const diff = paused - counts[EV.RESPAWN];
+  if (diff < 0 || diff > world.snakes.size) throw new Error(`pause/respawn count mismatch: ${paused} vs ${counts[EV.RESPAWN]}`);
 }
-console.log('全部不变量通过 ✔');
+console.log('all invariants hold OK');

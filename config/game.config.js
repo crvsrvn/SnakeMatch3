@@ -1,116 +1,132 @@
-// 全局可调配置：服务端与客户端共用同一份（客户端在 welcome 消息里收到快照）。
-// 修改后重启服务器即可生效。
+// Tunables, shared by server and client (the client receives a snapshot in the welcome
+// message). Restart the server for changes to take effect.
 
 export const CONFIG = {
   net: {
     port: 3000,
-    tickRate: 60,          // 服务器模拟频率(Hz)
-    framesPerPacket: 2,    // 每个广播包携带的帧数：客户端只做内插，密集的位置流才不会插值到空
-    interpDelayMs: 80,     // 客户端渲染时钟落后量，需大于收包间隔 + 抖动
+    tickRate: 60,          // server simulation rate (Hz)
+    framesPerPacket: 2,    // frames per broadcast: the client only interpolates, so the
+                           // position stream has to stay dense enough to interpolate within
+    interpDelayMs: 80,     // how far the client render clock lags; must exceed packet interval + jitter
   },
 
   map: {
-    size: 100,             // 正方形地图边长(世界单位)，四边穿越到对侧
-    gridStep: 5,           // 地面网格线间距，必须能整除 size
+    size: 100,             // square map edge in world units; all four sides wrap
+    gridStep: 5,           // ground grid spacing; must divide size
+    borderHeight: 3.2,     // height of the boundary light wall, world units
+    borderBand: 0.9,       // half width of the glowing band on the ground
   },
 
   snake: {
     beadRadius: 0.6,
-    beadSpacing: 0.92,     // 相邻球心距(略小于直径 -> 视觉相连)
-    initialLength: 30,      // 出生长度
-    maxLength: 300,         // 长度上限(吞并断尾时截断)
-    baseSpeed: 8,          // 单位/秒
-    sprintMultiplier: 2,// Shift 加速倍率
-    turnRate: 5,         // 最大角速度(rad/s) -> 最小转弯半径 = baseSpeed/turnRate
-    sprintTurnFactor: 0.3, // 冲刺时角速度乘这个系数：速度更快、转向更钝，冲刺要付出代价
+    beadSpacing: 0.92,     // centre to centre distance, just under a diameter so beads touch
+    initialLength: 30,      // length at spawn
+    maxLength: 300,         // hard cap, applied when grafting a severed tail
+    baseSpeed: 8,          // units per second
+    sprintMultiplier: 2,// speed multiplier while Shift is held
+    turnRate: 5,         // max angular speed (rad/s) -> min turn radius = baseSpeed/turnRate
+    sprintTurnFactor: 0.3, // angular speed is multiplied by this while sprinting: faster,
+                           // but much clumsier -- sprinting has to cost something
     jumpHeight: 2.4,
     jumpDuration: 0.6,
     jumpCooldown: 1.0,
-    jumpClearance: 1.1,    // 两颗珠高度差超过此值视为跨过，不判碰撞
-    hitFactor: 0.92,       // 碰撞距离 = (r1+r2)*hitFactor
-    spawnInvulnerable: 1.5,// 出生保护(秒)
-    selfCollision: 'die',  // 'die' 撞自己死亡重生 | 'none' 不判定
-    selfCollisionMinIndex: 4, // 从第几节开始算自撞
-    headOnTieEpsilon: 0.08,   // 头对头"正前方程度"差小于此值视为势均力敌，双方同归于尽
+    jumpClearance: 1.1,    // a height gap above this counts as clearing, no collision
+    hitFactor: 0.92,       // collision distance = (r1+r2)*hitFactor
+    spawnInvulnerable: 1.5,// spawn protection, seconds
+    invulnGraceMax: 2,     // if still overlapping when protection expires, extend at most this long
+    selfCollision: 'die',  // 'die' = hitting yourself kills you | 'none' = no self collision
+    selfCollisionMinIndex: 4, // first bead index that counts as self collision
+    headOnTieEpsilon: 0.08,   // head-on "squareness" closer than this is a dead heat, both die
 
-    deathPauseSec: 3,      // 死亡后原地停顿多久再重生
-    respawnNearRadius: 12, // 在死亡点多大半径内重生（要保证能看见死亡点标记）
-    deathMarkerSec: 3,     // 重生后死亡点标记还显示多久
+    deathPauseSec: 3,      // pause in place after dying, before respawning
+    respawnNearRadius: 12, // respawn within this radius of the death spot, so the marker is visible
+    deathMarkerSec: 3,     // how long the death marker lingers after respawn
+    winPauseSec: 3,        // pause in place after winning, before starting over
   },
 
-  // 珠子颜色种类：增删这个数组即可改变颜色数量
+  // Bead palette: add or remove entries to change how many colors are in play
   colors: ['#ff4d5a', '#ffae43', '#e9ff3f', '#4ce060', '#4cd6e0', '#3d49f0', '#cc4ce0'],
 
   items: {
-    count: 25,             // 地图上随机补充到的普通道具数量（不含万能珠与死亡掉落）
-    maxOnMap: 50,          // 场上道具总上限，防止极端情况堆积
+    count: 25,             // ordinary items topped up to this many (wild beads not included)
+    maxOnMap: 50,          // hard cap on items, so nothing piles up in edge cases
     radius: 0.55,
-    minSpawnDistance: 6,   // 随机生成时与任意蛇珠的最小距离
-    // 万能珠：定时成簇刷新，可当作任意颜色参与三消，未被消除前一直是彩虹色
+    minSpawnDistance: 6,   // keep spawns at least this far from any bead
+    // Wild beads: spawned in clusters on a timer, count as any color when matching,
+    // and stay rainbow-colored until cleared
     wild: {
-      intervalSec: 30,     // 每隔多久刷一簇
-      clusterSize: 2,      // 一簇几颗
-      spread: 5,         // 簇的半径
-      maxOnMap: 5,        // 场上万能珠上限，超过则跳过本次刷新
+      intervalSec: 30,     // seconds between clusters
+      clusterSize: 2,      // beads per cluster
+      spread: 5,         // cluster radius
+      maxOnMap: 5,        // cap on wild beads; over it, the spawn is skipped
     },
   },
 
   ai: {
-    count: 10,              // AI 蛇数量，昵称固定为 bot1 / bot2 ...
+    count: 10,              // number of bots; they are always named bot1 / bot2 / ...
     turnIntervalMin: 0.5,
     turnIntervalMax: 2.2,
-    maxTurnDelta: 1.8,     // 每次随机转向的最大幅度(rad)
-    lookAhead: 3.5,        // 自撞预判距离
+    maxTurnDelta: 1.8,     // largest random turn per decision, radians
+    lookAhead: 3.5,        // how far ahead a bot looks for its own body
   },
 
   camera: {
-    distance: 28,          // 相机到蛇头的距离
+    distance: 28,          // camera distance to the head
     minDistance: 16,
     maxDistance: 64,
-    pitchDeg: 64,          // 俯角(90 = 正俯视)
+    pitchDeg: 64,          // pitch in degrees (90 = straight down)
     fov: 55,
-    followLerp: 0.14,      // 焦点跟随平滑系数(每帧, 已按 60fps 归一)
+    followLerp: 0.14,      // focus smoothing per frame, normalised to 60fps
   },
 
   board: {
-    maxRows: 30,           // 排行榜最多显示几行（自己一定在内）
-    updateHz: 5,           // 排行榜刷新频率，没必要跟着渲染帧走
+    maxRows: 30,           // leaderboard rows (you are always one of them)
+    updateHz: 5,           // leaderboard refresh rate; no reason to follow the render loop
   },
 
   minimap: {
-    size: 184,             // 小地图边长(px)
+    size: 184,             // minimap edge in CSS pixels
     dotSize: 3.4,
   },
 
   graphics: {
-    maxFps: 60,            // 客户端渲染上限，高刷屏也不会跑超
-    cullMargin: 12,        // 可见半径 = 相机距离*1.5 + 该值；之外的蛇与道具不进渲染队列
-    labelRadius: 30,       // 超出这个距离就不画昵称牌，人一多屏幕会被名字糊满
-    beadSegments: [16, 11],// 珠子球体的经纬分段：面数直接乘在珠子总数上，人多时最敏感
+    maxFps: 60,            // client render cap, so a high refresh screen does not run away
+    cullMargin: 12,        // visible radius = camera distance * 1.5 + this; anything beyond
+                           // is dropped from the render queue
+    labelRadius: 30,       // stop drawing name tags past this, or a busy map is all names
+    beadSegments: [16, 11],// sphere segments: triangle count multiplies by the number of
+                           // beads, so this is the most sensitive knob when the map is busy
     shadows: true,
     fogDensity: 0.009,
+    auraScale: 1,          // bead aura particle count multiplier; 0 turns the aura off
+    flowSpeed: 1.6,        // how fast a flowing skin pattern travels along the body, cycles/s
+    flowSpacing: 1.2,      // phase step between neighbouring beads; larger means shorter wavelength
+    severFlashSec: 0.8,    // duration of the scan wave and camera kick after grafting a tail
+    // Bloom is what actually makes the emissive skins (neon, magma, galaxy, aurora) and
+    // the boundary wall read as glowing. It is one extra post-processing pass; turn
+    // `enabled` off if the GPU struggles.
+    bloom: {
+      enabled: true,
+      strength: 0.7,       // bloom strength
+      radius: 0.55,        // spread radius
+      // Luminance threshold. Under EffectComposer the scene is linear HDR and sunlit
+      // ground sits around 0.6-1.0, so the threshold has to clear 1.0 for bloom to land
+      // only on the emissive beads and the boundary wall.
+      threshold: 1.15,
+      scale: 0.5,          // resolution multiplier for the bloom pyramid: a blur never
+                           // needed full resolution, and 0.5 cuts its pixel count to a quarter
+    },
   },
 
   skins: ['glass', 'matte', 'metal', 'neon', 'candy', 'aurora', 'galaxy', 'magma'],
   defaultSkin: 'glass',
 
   profiles: {
-    historyPerIp: 8,       // 每个 IP 记住多少个历史昵称供快捷选择
+    historyPerIp: 8,       // how many past nicknames to remember per IP for quick pick
   },
 };
 
-export const SKIN_LABELS = {
-  glass: '玻璃珠',
-  matte: '哑光陶土',
-  metal: '抛光金属',
-  neon: '霓虹发光',
-  candy: '糖果釉面',
-  aurora: '极光虹彩',
-  galaxy: '深空星河',
-  magma: '熔岩裂纹',
-};
-
-// 压测用的临时覆盖，正常游玩不需要：SM3_AI=100 SM3_MAP=380 npm start
+// Temporary overrides for load testing; not needed to play: SM3_AI=100 SM3_MAP=380 npm start
 if (typeof process !== 'undefined' && process.env) {
   if (process.env.SM3_AI) CONFIG.ai.count = Number(process.env.SM3_AI);
   if (process.env.SM3_MAP) CONFIG.map.size = Number(process.env.SM3_MAP);

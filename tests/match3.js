@@ -1,7 +1,8 @@
-// 三消规则单测，重点是万能珠(WILD)的通配判定。
-// 关键陷阱：贪心必须尝试每一个起点 —— [蓝, 万能, 红, 红] 从 0 起只能凑到 2 颗，
-// 从 1 起才凑得出 [万能, 红, 红]。只从上一段结尾继续扫会漏掉这种情况。
-// 运行： node tests/match3.js
+// Unit tests for the match rules, mostly around the WILD bead standing in for any color.
+// The trap: the greedy scan has to try every start index. In [blue, wild, red, red] a scan
+// from 0 only reaches 2 beads; starting at 1 finds [wild, red, red]. Continuing from where
+// the previous window ended misses that case.
+// Run with: node tests/match3.js
 
 import { WILD } from '../shared/protocol.js';
 import { resolveMatches, randomColors } from '../server/match3.js';
@@ -13,36 +14,36 @@ function expect(input, leftover, label) {
   const groups = resolveMatches(colors, null);
   const ok = JSON.stringify(colors) === JSON.stringify(leftover);
   if (!ok) failed++;
-  console.log(`  ${ok ? '✔' : '✘'} ${label}: ${JSON.stringify(input)} -> 剩余 ${JSON.stringify(colors)}`
-    + `${ok ? '' : `（期望 ${JSON.stringify(leftover)}）`}`
-    + `  消除 ${groups.length} 组`);
+  console.log(`  ${ok ? 'OK  ' : 'FAIL'} ${label}: ${JSON.stringify(input)} -> left ${JSON.stringify(colors)}`
+    + `${ok ? '' : ` (expected ${JSON.stringify(leftover)})`}`
+    + `  ${groups.length} group(s) cleared`);
 }
 
-console.log('三消规则:');
-expect([0, 0, 0], [], '三颗同色');
-expect([0, 1, 0], [0, 1, 0], '被隔开不成立');
-expect([0, 0], [0, 0], '只有两颗不成立');
-expect([0, 0, 0, 0, 0], [], '五连一次全消');
-expect([1, 0, 0, 0, 1, 1, 1], [], '连锁：先消中间再消两端');
+console.log('match rules:');
+expect([0, 0, 0], [], 'three of a color');
+expect([0, 1, 0], [0, 1, 0], 'separated, no match');
+expect([0, 0], [0, 0], 'only two, no match');
+expect([0, 0, 0, 0, 0], [], 'a run of five clears at once');
+expect([1, 0, 0, 0, 1, 1, 1], [], 'chain: the middle clears, then the ends');
 
-console.log('万能珠:');
-expect([0, WILD, 0], [], '万能补中间');
-expect([WILD, 0, 0], [], '万能补头');
-expect([0, 0, WILD, 1], [1], '万能补尾');
-expect([1, WILD, 0, 0], [1], '左起不成立、右移一位成立');
-expect([WILD, WILD, WILD], [], '三颗万能自己成立');
-expect([0, WILD, 1], [0, WILD, 1], '中间万能但两侧不同色');
-expect([2, 2, WILD, 2, 1], [1], '万能夹在同色中，整段消掉');
-expect([WILD, 1], [WILD, 1], '不足三颗');
+console.log('wild beads:');
+expect([0, WILD, 0], [], 'wild fills the middle');
+expect([WILD, 0, 0], [], 'wild fills the front');
+expect([0, 0, WILD, 1], [1], 'wild fills the back');
+expect([1, WILD, 0, 0], [1], 'no match from 0, a match from 1');
+expect([WILD, WILD, WILD], [], 'three wilds match on their own');
+expect([0, WILD, 1], [0, WILD, 1], 'wild in the middle, different colors either side');
+expect([2, 2, WILD, 2, 1], [1], 'wild among one color clears the whole run');
+expect([WILD, 1], [WILD, 1], 'fewer than three');
 
-console.log('初始颜色:');
+console.log('starting colors:');
 for (let i = 0; i < 200; i++) {
   const c = randomColors(8, 4);
-  if (c.length !== 8) { failed++; console.log('  ✘ 长度不对'); break; }
+  if (c.length !== 8) { failed++; console.log('  FAIL wrong length'); break; }
   const g = resolveMatches(c.slice(), null);
-  if (g.length) { failed++; console.log(`  ✘ 出生就自带可消段: ${JSON.stringify(c)}`); break; }
+  if (g.length) { failed++; console.log(`  FAIL spawned with a clearable run: ${JSON.stringify(c)}`); break; }
 }
-if (!failed) console.log('  ✔ 200 组随机初始颜色都不含 3 连');
+if (!failed) console.log('  OK   200 random starting sets, none with a run of 3');
 
-if (failed) throw new Error(`${failed} 例失败`);
-console.log('三消规则全部通过 ✔');
+if (failed) throw new Error(`${failed} case(s) failed`);
+console.log('match rules all pass');

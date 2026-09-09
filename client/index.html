@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>Snake Match 3 · 贪吃蛇三消对战</title>
+<title>Snake Match 3</title>
 <link rel="stylesheet" href="/css/style.css">
 <script type="importmap">
 {
@@ -21,58 +21,88 @@
 <div id="hud" hidden>
   <div id="left">
     <canvas id="minimap"></canvas>
-    <div id="net"><b id="fps">--</b> fps · <b id="frameMs">--</b> ms/帧 · 延迟 <b id="ping">--</b> ms</div>
+    <div id="net">
+      <b id="fps">--</b> fps · <b id="frameMs">--</b> <span data-i18n="hud.msPerFrame"></span>
+      · <span data-i18n="hud.latency"></span> <b id="ping">--</b> ms
+    </div>
     <div id="stat">
       <div class="row"><span id="myName">-</span><span id="myTrophy">🏆 0</span></div>
-      <div class="row small">剩余长度 <b id="myLen">0</b> <span class="tip">— 归零即获胜</span></div>
+      <div class="row small">
+        <span data-i18n="hud.remaining"></span> <b id="myLen">0</b>
+        <span class="tip" data-i18n="hud.remainingTip"></span>
+      </div>
       <div id="beads"></div>
     </div>
   </div>
 
   <div id="board">
-    <div class="title" id="boardTitle">在线</div>
+    <div class="title" id="boardTitle"></div>
     <ol id="boardList"></ol>
   </div>
 
   <div id="corner">
     <div id="rules">
-      <div class="rHead">规则</div>
-      <div><b>目标</b>　把自己的珠子全部消完，夺一座奖杯</div>
-      <div><b>三消</b>　三颗同色相连即消除，<i>彩虹珠</i>可当任意颜色</div>
-      <div><b>撞身体</b>　从撞击点切断对方，断尾接到自己头前</div>
-      <div><b>撞头</b>　撞得更"正"的赢，势均力敌则同归于尽</div>
-      <div><b>撞自己</b>　死亡；地图四边可穿越到对侧</div>
+      <div class="rHead" data-i18n="rules.head"></div>
+      <div><b data-i18n="rules.goalK"></b><span data-i18n="rules.goalV"></span></div>
+      <div><b data-i18n="rules.matchK"></b><span data-i18n-html="rules.matchV"></span></div>
+      <div><b data-i18n="rules.bodyK"></b><span data-i18n="rules.bodyV"></span></div>
+      <div><b data-i18n="rules.headK"></b><span data-i18n="rules.headV"></span></div>
+      <div><b data-i18n="rules.selfK"></b><span data-i18n="rules.selfV"></span></div>
     </div>
     <div id="hint">
-      <b>WASD</b> 移动 · <b>Shift</b> 加速（转向变钝） · <b>空格</b> 跳跃（滞空不吃珠、可越过蛇身）<br>
-      <b>滚轮</b> 缩放 · <b>M</b> 静音
+      <span data-i18n-html="hint.move"></span><br>
+      <span data-i18n-html="hint.misc"></span>
     </div>
   </div>
 
   <div id="toasts"></div>
 
+  <div id="win" hidden>
+    <div class="winCard">
+      <div class="wTitle" data-i18n="win.title"></div>
+      <div class="wBy">
+        <span data-i18n="win.trophyPre"></span> <b id="wTrophy">0</b>
+        <span data-i18n="win.trophyPost"></span>
+      </div>
+      <div class="wCd">
+        <span data-i18n="win.cdPre"></span> <b id="wCount">3</b>
+        <span data-i18n="win.cdPost"></span>
+      </div>
+    </div>
+  </div>
+
   <div id="death" hidden>
     <div class="deadCard">
-      <div class="dTitle">被淘汰</div>
-      <div class="dBy">败给 <b id="dKiller">—</b> · 珠子已散落原地</div>
-      <div class="dCd"><b id="dCount">3</b> 秒后在死亡点附近重生</div>
+      <div class="dTitle" data-i18n="death.title"></div>
+      <div class="dBy">
+        <span data-i18n="death.byPre"></span> <b id="dKiller">—</b>
+        <span data-i18n="death.byPost"></span>
+      </div>
+      <div class="dCd">
+        <span data-i18n="death.cdPre"></span> <b id="dCount">3</b>
+        <span data-i18n="death.cdPost"></span>
+      </div>
     </div>
   </div>
 </div>
 
 <div id="login">
   <div class="panel">
+    <div id="langSwitch">
+      <button type="button" data-lang="zh" data-i18n="lang.zh"></button>
+      <button type="button" data-lang="en" data-i18n="lang.en"></button>
+    </div>
     <h1>Snake<span>Match3</span></h1>
-    <p class="sub">俯视角 · 局域网对战 · 贪吃蛇三消<br>把自己的珠子全部消完就赢一座奖杯</p>
-    <label class="field">昵称
-      <input id="nickInput" maxlength="12" placeholder="输入昵称" autocomplete="off">
+    <p class="sub" data-i18n-html="login.sub"></p>
+    <label class="field"><span data-i18n="login.nickname"></span>
+      <input id="nickInput" maxlength="12" data-i18n-ph="login.nickPlaceholder" autocomplete="off">
       <div id="nickHint"></div>
       <div id="nickHistory"></div>
     </label>
-    <div class="field">皮肤
+    <div class="field"><span data-i18n="login.skin"></span>
       <div id="skinList"></div>
     </div>
-    <button id="playBtn" disabled>连接中…</button>
+    <button id="playBtn" disabled data-i18n="login.connecting"></button>
     <p class="foot" id="loginFoot"></p>
   </div>
 </div>

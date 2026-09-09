@@ -1,5 +1,7 @@
-// 小地图：整张地图缩略图，画出所有蛇的位置、万能珠簇与自己的死亡点。
-// 逐颗珠画点而不是画折线 —— 蛇跨越边界时折线会横穿整张图，画点则天然正确。
+// Minimap: the whole map in miniature, showing every snake, the wild bead clusters, and
+// your own death spot.
+// Beads are drawn as dots rather than a polyline: a polyline would cut straight across the
+// map whenever a snake wraps, while dots are correct for free.
 
 import { WILD } from '/shared/protocol.js';
 
@@ -19,10 +21,12 @@ export class Minimap {
     this.g.scale(dpr, dpr);
     this.px = px;
     this.acc = 0;
+    this.t = 0;
   }
 
-  /** @param deathPos 自己的死亡点(可为 null) */
+  /** @param deathPos your own death spot, or null */
   draw(snakes, items, myId, deathPos, dt) {
+    this.t += dt;
     this.acc += dt;
     if (this.acc < 1 / REDRAW_HZ) return;
     this.acc = 0;
@@ -36,7 +40,7 @@ export class Minimap {
     g.fillStyle = 'rgba(10,16,30,.72)';
     g.fillRect(0, 0, px, px);
 
-    // 网格
+    // Grid
     g.strokeStyle = 'rgba(120,160,230,.13)';
     g.lineWidth = 1;
     g.beginPath();
@@ -46,20 +50,26 @@ export class Minimap {
     }
     g.stroke();
 
-    // 万能珠簇
-    g.fillStyle = '#ffffff';
+    // Wild beads: a haloed dot cycling slowly through the hues. Rainbow rather than a white
+    // square, so it is unmistakable among the other markers and still findable on a busy map.
     for (const it of items) {
       if (it[3] !== WILD) continue;
-      g.globalAlpha = 0.85;
-      g.fillRect(it[1] * k - 1, (C.map.size - it[2]) * k - 1, 2.5, 2.5);
+      const x = it[1] * k, y = (C.map.size - it[2]) * k;
+      const hue = Math.floor(this.t * 70 + x * 4 + y * 4) % 360;
+      g.fillStyle = `hsla(${hue},100%,65%,.3)`;
+      g.beginPath(); g.arc(x, y, 5.5, 0, Math.PI * 2); g.fill();
+      g.fillStyle = `hsl(${hue},100%,72%)`;
+      g.beginPath(); g.arc(x, y, 2.4, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = 'rgba(255,255,255,.9)';
+      g.lineWidth = 1;
+      g.beginPath(); g.arc(x, y, 2.4, 0, Math.PI * 2); g.stroke();
     }
-    g.globalAlpha = 1;
 
-    // 蛇：身体小点 + 头部大点
+    // Snakes: small dots for the body, a larger one for the head
     for (const s of snakes) {
       const me = s.id === myId;
       if (s.beads.length === 0) {
-        if (!s.deathPos) continue;
+        if (!s.deathPos || s.win) continue;      // a win pause is not a death, so no cross
         g.strokeStyle = me ? '#ff6a7d' : 'rgba(255,106,125,.45)';
         g.lineWidth = 1.5;
         const x = s.deathPos.x * k, y = (C.map.size - s.deathPos.y) * k;
@@ -89,7 +99,7 @@ export class Minimap {
       }
     }
 
-    // 自己的死亡点（重生后仍显示一段时间）
+    // Your own death spot, still shown for a while after respawning
     if (deathPos) {
       g.strokeStyle = '#ff6a7d';
       g.lineWidth = 1.6;
