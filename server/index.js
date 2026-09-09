@@ -109,6 +109,8 @@ wss.on('connection', (ws, req) => {
 });
 
 // ---------- 固定步长循环 ----------
+// 定时器以半个 tick 的周期唤醒：Windows 的定时器粒度约 15ms，若按整个 tick 唤醒，
+// 一次唤醒常常凑成 0 步或 2 步，广播间隔会在 30ms 与 60ms 之间跳，客户端插值很难吃掉。
 const dt = 1 / CONFIG.net.tickRate;
 let acc = 0;
 let last = process.hrtime.bigint();
@@ -129,7 +131,7 @@ setInterval(() => {
   for (const [ws, ctx] of clients) {
     if (ctx.snakeId != null && ws.readyState === ws.OPEN) ws.send(payload);
   }
-}, 1000 / CONFIG.net.tickRate);
+}, Math.max(1, Math.floor(500 / CONFIG.net.tickRate)));
 
 process.on('SIGINT', () => { profiles.flush(); process.exit(0); });
 

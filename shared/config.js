@@ -4,7 +4,7 @@ export const CONFIG = {
   net: {
     port: 3000,
     tickRate: 30,          // 服务器模拟 + 广播频率(Hz)
-    interpDelayMs: 70,     // 客户端插值缓冲，越大越平滑、越迟钝
+    interpDelayMs: 80,     // 客户端插值缓冲，越大越平滑、越迟钝；需大于收包间隔抖动
   },
 
   map: {
@@ -28,16 +28,17 @@ export const CONFIG = {
     spawnInvulnerable: 1.5,// 出生保护(秒)
     selfCollision: 'die',  // 'die' 撞自己死亡重生 | 'none' 不判定
     selfCollisionMinIndex: 4, // 从第几节开始算自撞
-    headOnTieEpsilon: 0.08,   // 头对头"正前方程度"差小于此值判平局
+    headOnTieEpsilon: 0.08,   // 头对头"正前方程度"差小于此值视为势均力敌，双方同归于尽
   },
 
   // 珠子颜色种类：增删这个数组即可改变颜色数量
   colors: ['#ff4d5a', '#43a8ff', '#ffd23f', '#4ce07a'],
 
   items: {
-    count: 24,             // 地图上同时存在的道具数量
+    count: 24,             // 地图上随机补充到的道具数量
+    maxOnMap: 90,          // 含死亡掉落在内的道具总上限，防止极端情况堆积
     radius: 0.55,
-    minSpawnDistance: 6,   // 生成时与任意蛇珠的最小距离
+    minSpawnDistance: 6,   // 随机生成时与任意蛇珠的最小距离
   },
 
   ai: {

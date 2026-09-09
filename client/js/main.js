@@ -201,10 +201,14 @@ function onEvents(evs) {
         if (near > 0.05) A.sfxClink(near);
         break;
       }
-      case EV.DEATH:
-        if (e.id === myId) { A.sfxDie(); hud.toast(`你被 ${e.by} 撞掉了，重新出生`, 'bad'); }
-        else hud.toast(`${e.name} 被 ${e.by} 淘汰`);
+      case EV.DEATH: {
+        const drops = e.drops || [];
+        for (const d of drops) fx.burst(toRender(d, tmp), CONFIG.colors[d[3]], 12, 5, 0.5);
+        if (drops.length) fx.ring(toRender(drops[0], tmp), 0xff6a7d, 8, 0.5);
+        if (e.id === myId) { A.sfxDie(); hud.toast(`你被 ${e.by} 撞掉了，珠子散落原地`, 'bad'); }
+        else hud.toast(`${e.name} 被 ${e.by} 淘汰，散落 ${drops.length} 颗珠子`);
         break;
+      }
       case EV.WIN:
         if (e.id === myId) { A.sfxWin(); hud.toast(`消完了！奖杯 +1（共 ${e.trophies}）`, 'win'); }
         else hud.toast(`${e.name} 清空珠子，夺得第 ${e.trophies} 座奖杯`, 'win');

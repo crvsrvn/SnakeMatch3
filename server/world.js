@@ -189,7 +189,7 @@ export class World {
     }
   }
 
-  /** 头对头：比较"正前方程度"，胜者消一颗头珠，败者死亡重生 */
+  /** 头对头：比较"正前方程度"，胜者消一颗头珠，败者死亡重生；势均力敌则同归于尽 */
   headOn(a, b) {
     const ha = a.beads[0], hb = b.beads[0];
     const dx = toroidalDelta(ha.x, hb.x, MAP), dy = toroidalDelta(ha.y, hb.y, MAP);
@@ -202,8 +202,8 @@ export class World {
       p: [r2(ha.x + dx / 2), r2(ha.y + dy / 2), r2((ha.z + hb.z) / 2)],
     });
 
-    if (Math.abs(fa - fb) < S.headOnTieEpsilon) {   // 平局：各消一颗，谁也不死
-      this.popHead(a); this.popHead(b);
+    if (Math.abs(fa - fb) < S.headOnTieEpsilon) {   // 正得一样，同归于尽
+      this.kill(a, b.name); this.kill(b, a.name);
     } else if (fa > fb) {
       this.popHead(a); this.kill(b, a.name);
     } else {
@@ -228,8 +228,21 @@ export class World {
   }
 
   kill(s, byName) {
-    this.events.push({ t: EV.DEATH, id: s.id, name: s.name, by: byName });
+    const drops = this.dropBeads(s);
+    this.events.push({ t: EV.DEATH, id: s.id, name: s.name, by: byName, drops });
     this.placeAtFreeSpot(s);
+  }
+
+  /** 死亡时珠子原地留下，和普通道具进同一个池子，谁都能捡 */
+  dropBeads(s) {
+    const drops = [];
+    for (let i = 0; i < s.beads.length; i++) {
+      if (this.items.length >= CONFIG.items.maxOnMap) break;
+      const b = s.beads[i];
+      this.items.push({ id: this.nextItemId++, x: b.x, y: b.y, c: s.colors[i] });
+      drops.push([r2(b.x), r2(b.y), r2(b.z), s.colors[i]]);
+    }
+    return drops;
   }
 
   // ---------- 三消与胜利 ----------
