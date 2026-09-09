@@ -164,6 +164,21 @@ setInterval(() => {
 
 process.on('SIGINT', () => { profiles.flush(); process.exit(0); });
 
+// 端口就是"本机只能开一个服务器"的锁。run.js 会先探一次给出友好提示，
+// 但两次双击撞在一起时仍然要靠这里兜底。
+// 注意要同时挂在 wss 上：ws 会把 http 服务器的 error 转发到自己身上，
+// 而它的监听器注册得比这里早，只挂 server 的话仍然会以"未处理的 error 事件"崩掉。
+function onListenError(e) {
+  if (e.code !== 'EADDRINUSE') throw e;
+  console.error('');
+  console.error(`  端口 ${CONFIG.net.port} 已被占用，服务器多半已经在运行了。`);
+  console.error('  本机同时只能开一个实例；想进游戏请双击 run/2-打开游戏.cmd');
+  console.error('');
+  process.exit(1);
+}
+server.on('error', onListenError);
+wss.on('error', onListenError);
+
 server.listen(CONFIG.net.port, () => {
   const addrs = [];
   for (const list of Object.values(os.networkInterfaces())) {

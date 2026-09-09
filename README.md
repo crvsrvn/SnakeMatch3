@@ -8,8 +8,17 @@
 
 ```bash
 npm install
-npm start
 ```
+
+装好之后，**`run/` 里的三个脚本双击就能用**（不想用命令行的话）：
+
+| 双击 | 作用 |
+|---|---|
+| `run/1-启动服务器.cmd` | 起服务器。本机只允许一个实例，端口被占会直接报错并说明怎么办 |
+| `run/2-打开游戏.cmd` | 用默认浏览器打开游戏；服务器没起会提示先去起服务器 |
+| `run/3-启动服务器并打开游戏.cmd` | 起服务器，等它真的能连上了再自动开浏览器 |
+
+命令行等价物：`npm start` / `node scripts/run.js client` / `node scripts/run.js both`。
 
 `npm start` 会先复制一份 `node.exe` 成 `.run/SnakeMatch3_Server.exe`，用 `rcedit` 改写它的
 **PE 版本资源与图标**，再用它启动。任务管理器有两处名字、来源不同，两处都得改：
@@ -116,7 +125,8 @@ npm run stress      # 100 条 AI 的服务器压测（可加参数：node tests/
 
 ```
 config/    game.config.js —— 所有可调参数
-scripts/   start.js / serverExe.js —— 启动器，把进程改名并打上版本资源与图标
+run/       双击即用的启动脚本
+scripts/   run.js 单实例检查与开浏览器 / start.js + serverExe.js 进程改名
 database/  players.json   —— 昵称与奖杯（运行时生成）
 shared/    协议、环面数学（服务端与浏览器共用）
 server/    world 权威模拟 / snake 轨迹模型 / match3 / ai / profiles
@@ -126,4 +136,4 @@ tests/     无头回归测试
 ```
 
 - 实现细节与设计取舍：[`docs/design.md`](docs/design.md)
-- 双端通信协议详解、以及扩展到公网的完整方案：[`docs/networking.md`](docs/networking.md)
+- 双端通信协议详解、公网化方案、跨境部署（大陆↔海外）：[`docs/networking.md`](docs/networking.md)

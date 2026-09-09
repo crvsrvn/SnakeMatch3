@@ -6,14 +6,14 @@
 
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { ensureServerExe } from './serverExe.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ENTRY = path.join(ROOT, 'server', 'index.js');
 
 if (process.argv.includes('--plain') || process.platform !== 'win32') {
-  await import(ENTRY);
+  await import(pathToFileURL(ENTRY).href);   // Windows 上 import() 不接受盘符绝对路径，必须是 file:// URL
 } else {
   const { exe, branded } = await ensureServerExe(ROOT);
   if (!branded) console.log('[启动器] 映像名已改，但版本资源未改写（进程页仍显示 Node.js 的名字）');
