@@ -6,21 +6,24 @@ import { createScene } from './scene.js';
 import { SnakeViews } from './snakeView.js';
 import { ItemViews } from './itemView.js';
 import { Effects } from './effects.js';
+import { Minimap } from './minimap.js';
 import { Hud } from './hud.js';
 import { Input } from './input.js';
 import * as A from './audio.js';
-import { EV } from '/shared/protocol.js';
+import { EV, WILD } from '/shared/protocol.js';
 import { wrap, toroidalDelta, clamp } from '/shared/mathUtil.js';
 
 let CONFIG = null, MAP = 0;
-let gfx = null, views = null, itemViews = null, fx = null, hud = null;
+let gfx = null, views = null, itemViews = null, fx = null, hud = null, minimap = null;
 let myId = null, anchorInit = false, camDist = 0, matchStreak = 0, lastMatchAt = 0;
+let myDeath = null, myKiller = '', markerUntil = 0;
 const anchor = { x: 0, y: 0 };
 const tmp = new THREE.Vector3();
 
 const ui = {
   login: document.getElementById('login'),
   nick: document.getElementById('nickInput'),
+  history: document.getElementById('nickHistory'),
   skins: document.getElementById('skinList'),
   play: document.getElementById('playBtn'),
   foot: document.getElementById('loginFoot'),
@@ -36,14 +39,23 @@ const input = new Input(
   () => hud?.toast(A.toggleMute() ? '已静音' : '已取消静音'),
 );
 
+const fxColor = (c) => (c === WILD ? 0xffffff : CONFIG.colors[c]);
+
 // ---------------- 登录 ----------------
 
 function onWelcome(m) {
   CONFIG = m.config;
   MAP = CONFIG.map.size;
   camDist = CONFIG.camera.distance;
-  ui.nick.value = localStorage.getItem('sm3.nick') || m.suggestedNickname || '';
   if (!CONFIG.skins.includes(chosenSkin)) chosenSkin = CONFIG.defaultSkin;
+
+  const history = m.nicknames || [];
+  ui.nick.value = localStorage.getItem('sm3.nick') || history[0] || '';
+  ui.history.innerHTML = history
+    .map((n) => `<span class="nickChip" data-nick="${escapeAttr(n)}">${escapeHtml(n)}</span>`).join('');
+  ui.history.querySelectorAll('.nickChip').forEach((b) => b.addEventListener('click', () => {
+    ui.nick.value = b.dataset.nick;
+  }));
 
   ui.skins.innerHTML = CONFIG.skins.map((s) => `
     <div class="skinBtn${s === chosenSkin ? ' on' : ''}" data-skin="${s}">
@@ -56,7 +68,7 @@ function onWelcome(m) {
 
   ui.play.disabled = false;
   ui.play.textContent = '进入战场';
-  ui.foot.textContent = `你的地址 ${m.ip} · 昵称与奖杯按此绑定`;
+  ui.foot.textContent = `你的地址 ${m.ip} · 同一地址可以开多个网页、用不同昵称各玩各的`;
 }
 
 ui.play.addEventListener('click', () => {
@@ -95,8 +107,9 @@ function boot() {
   gfx = createScene(CONFIG);
   views = new SnakeViews(gfx.scene, CONFIG, gfx.CSS2DObject);
   itemViews = new ItemViews(gfx.scene, CONFIG);
-  fx = new Effects(gfx.scene);
+  fx = new Effects(gfx.scene, CONFIG);
   hud = new Hud(CONFIG);
+  minimap = new Minimap(document.getElementById('minimap'), CONFIG);
 
   addEventListener('wheel', (e) => {
     camDist = clamp(camDist + Math.sign(e.deltaY) * 2.5, CONFIG.camera.minDistance, CONFIG.camera.maxDistance);
@@ -106,7 +119,7 @@ function boot() {
 }
 
 let last = performance.now();
-let fpsAcc = 0, fpsN = 0, fpsShown = 0;
+let fpsAcc = 0, fpsN = 0;
 
 function frame(now) {
   requestAnimationFrame(frame);
@@ -118,14 +131,18 @@ function frame(now) {
   if (st) {
     const me = st.snakes.find((s) => s.id === myId);
     if (me) {
-      followCamera(me.beads[0], dt);
+      if (me.dead && me.deathPos) followCamera(me.deathPos, dt, me.tp);
+      else if (me.beads.length) followCamera(me.beads[0], dt, me.tp);
       hud.setSelf(me);
+      hud.setDeath(me.dead ? me.dead : null, myKiller);
     }
     views.sync(st.snakes, anchor, myId, dt);
     itemViews.sync(st.items, anchor, dt);
     hud.setBoard(st.snakes, myId);
+    minimap.draw(st.snakes, st.items, myId, myDeath, dt);
   }
 
+  updateDeathMarker(now / 1000);
   fx.update(dt);
   gfx.placeCamera(anchor.x, anchor.y, camDist);
   gfx.renderer.render(gfx.scene, gfx.camera);
@@ -133,23 +150,35 @@ function frame(now) {
 
   fpsAcc += dt; fpsN++;
   if (fpsAcc >= 0.5) {
-    fpsShown = Math.round(fpsN / fpsAcc);
+    hud.setStatus(Math.round(fpsN / fpsAcc), net.ping);
     fpsAcc = 0; fpsN = 0;
-    hud.setStatus(fpsShown, net.ping);
   }
 }
 
-/** 焦点在环面上朝蛇头平滑靠拢；重生等瞬移时直接吸附 */
-function followCamera(head, dt) {
-  const dx = toroidalDelta(anchor.x, head.x, MAP);
-  const dy = toroidalDelta(anchor.y, head.y, MAP);
-  if (!anchorInit || Math.hypot(dx, dy) > 20) {
-    anchor.x = head.x; anchor.y = head.y; anchorInit = true;
+/** 焦点在环面上朝目标平滑靠拢；重生等瞬移时直接吸附 */
+function followCamera(target, dt, teleported) {
+  const dx = toroidalDelta(anchor.x, target.x, MAP);
+  const dy = toroidalDelta(anchor.y, target.y, MAP);
+  if (!anchorInit || teleported || Math.hypot(dx, dy) > 20) {
+    anchor.x = target.x; anchor.y = target.y; anchorInit = true;
     return;
   }
   const k = 1 - Math.pow(1 - CONFIG.camera.followLerp, dt * 60);
   anchor.x = wrap(anchor.x + dx * k, MAP);
   anchor.y = wrap(anchor.y + dy * k, MAP);
+}
+
+/** 死亡点标记：从死亡起显示，重生后再保留 deathMarkerSec 秒 */
+function updateDeathMarker(nowSec) {
+  if (!myDeath || nowSec > markerUntil) {
+    if (fx.markerVisible) fx.markerOff();
+    if (myDeath && nowSec > markerUntil) myDeath = null;
+    return;
+  }
+  if (!fx.markerVisible) fx.markerOn();
+  const x = anchor.x + toroidalDelta(anchor.x, myDeath.x, MAP);
+  const y = anchor.y + toroidalDelta(anchor.y, myDeath.y, MAP);
+  fx.marker.position.set(x, -CONFIG.snake.beadRadius, -y);
 }
 
 // ---------------- 事件 -> 特效 / 音效 / 公告 ----------------
@@ -158,7 +187,7 @@ function followCamera(head, dt) {
 function toRender(p, out) {
   const x = anchor.x + toroidalDelta(anchor.x, p[0], MAP);
   const y = anchor.y + toroidalDelta(anchor.y, p[1], MAP);
-  return out.set(x, p[2], -y);
+  return out.set(x, p[2] || 0, -y);
 }
 
 function nearness(p) {
@@ -173,16 +202,20 @@ function onEvents(evs) {
       case EV.EAT: {
         const near = nearness(e.p);
         if (near <= 0) break;
-        fx.burst(toRender(e.p, tmp), CONFIG.colors[e.c], 8, 3.5, 0.4);
+        fx.burst(toRender(e.p, tmp), fxColor(e.c), 8, 3.5, 0.4);
         if (near > 0.5) A.sfxEat();
         break;
       }
       case EV.MATCH: {
-        const now = performance.now();
-        matchStreak = now - lastMatchAt < 900 ? matchStreak + 1 : 0;
-        lastMatchAt = now;
-        const color = CONFIG.colors[e.c];
-        for (const p of e.pts) fx.burst(toRender(p, tmp), color, 16, 6, 0.5);
+        const nowMs = performance.now();
+        matchStreak = nowMs - lastMatchAt < 900 ? matchStreak + 1 : 0;
+        lastMatchAt = nowMs;
+        const color = fxColor(e.c);
+        // 先留下会闪烁的"虚拟珠"，告诉玩家是哪几颗被消掉了
+        for (const p of e.pts) {
+          fx.ghost(toRender(p, tmp), color);
+          fx.burst(toRender(p, tmp), color, 12, 5, 0.4);
+        }
         if (e.pts.length) fx.ring(toRender(e.pts[0], tmp), color, 6, 0.5);
         if (nearness(e.pts[0] || [anchor.x, anchor.y, 0]) > 0.3) A.sfxMatch(matchStreak);
         break;
@@ -203,12 +236,25 @@ function onEvents(evs) {
       }
       case EV.DEATH: {
         const drops = e.drops || [];
-        for (const d of drops) fx.burst(toRender(d, tmp), CONFIG.colors[d[3]], 12, 5, 0.5);
+        for (const d of drops) fx.burst(toRender(d, tmp), fxColor(d[3]), 12, 5, 0.5);
         if (drops.length) fx.ring(toRender(drops[0], tmp), 0xff6a7d, 8, 0.5);
-        if (e.id === myId) { A.sfxDie(); hud.toast(`你被 ${e.by} 撞掉了，珠子散落原地`, 'bad'); }
-        else hud.toast(`${e.name} 被 ${e.by} 淘汰，散落 ${drops.length} 颗珠子`);
+        if (e.id === myId) {
+          A.sfxDie();
+          myDeath = { x: e.p[0], y: e.p[1] };
+          myKiller = e.by;
+          markerUntil = Infinity;                 // 停顿期间一直显示，重生时改成有限时长
+          hud.toast(`你被 ${e.by} 撞掉了，珠子散落原地`, 'bad');
+        } else {
+          hud.toast(`${e.name} 被 ${e.by} 淘汰，散落 ${drops.length} 颗珠子`);
+        }
         break;
       }
+      case EV.RESPAWN:
+        if (e.id === myId) markerUntil = performance.now() / 1000 + CONFIG.snake.deathMarkerSec;
+        break;
+      case EV.WILD:
+        hud.toast('彩虹珠出现了！可当作任意颜色（看小地图）', 'wild');
+        break;
       case EV.WIN:
         if (e.id === myId) { A.sfxWin(); hud.toast(`消完了！奖杯 +1（共 ${e.trophies}）`, 'win'); }
         else hud.toast(`${e.name} 清空珠子，夺得第 ${e.trophies} 座奖杯`, 'win');
@@ -216,3 +262,9 @@ function onEvents(evs) {
     }
   }
 }
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s); }

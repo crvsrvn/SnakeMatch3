@@ -1,10 +1,12 @@
 // 蛇的可视化：珠体网格池、昵称牌、朝向指示、出生保护罩。
 // 服务器给的是"取模到地图内"的坐标，这里沿链条逐颗展开成连续渲染坐标，
 // 这样蛇跨越边界时看起来是连成一条、平滑穿出去的。
+// 死亡停顿中的蛇没有珠子，只保留一个名牌挂在死亡点上。
 
 import * as THREE from 'three';
 import { makeBead, retintBead } from './skins.js';
 import { toroidalDelta } from '/shared/mathUtil.js';
+import { WILD } from '/shared/protocol.js';
 
 export class SnakeViews {
   constructor(scene, CONFIG, CSS2DObject) {
@@ -15,6 +17,8 @@ export class SnakeViews {
     this.arrowGeo = new THREE.ConeGeometry(0.3, 0.9, 3).rotateZ(-Math.PI / 2);
     this.bubbleGeo = new THREE.SphereGeometry(1, 20, 12);
   }
+
+  colorOf(c) { return c === WILD ? null : this.C.colors[c]; }
 
   /** @param anchor 相机焦点(游戏坐标) —— 所有渲染坐标都展开到它附近 */
   sync(snakes, anchor, myId, dt) {
@@ -70,7 +74,24 @@ class SnakeView {
     const MAP = C.map.size;
     const R = C.snake.beadRadius;
     const n = s.beads.length;
-    if (n === 0) return;
+
+    if (n === 0) {                                  // 死亡停顿中：只把名牌留在死亡点
+      for (const m of this.meshes) m.visible = false;
+      this.arrow.visible = false;
+      this.bubble.visible = false;
+      if (s.deathPos) {
+        const x = anchor.x + toroidalDelta(anchor.x, s.deathPos.x, MAP);
+        const y = anchor.y + toroidalDelta(anchor.y, s.deathPos.y, MAP);
+        this.label.position.set(x, 1.6, -y);
+        this.label.visible = true;
+      } else {
+        this.label.visible = false;
+      }
+      this.setLabel(s.name, '×', isSelf);
+      return;
+    }
+    this.arrow.visible = true;
+    this.label.visible = true;
 
     // 沿链条展开：第 0 颗对齐到相机焦点附近，其余相对前一颗取环面最短路
     let px = anchor.x + toroidalDelta(anchor.x, s.beads[0].x, MAP);
@@ -81,7 +102,7 @@ class SnakeView {
         px += toroidalDelta(px, s.beads[i].x, MAP);
         py += toroidalDelta(py, s.beads[i].y, MAP);
       }
-      const colorHex = C.colors[s.colors[i]];
+      const colorHex = this.o.colorOf(s.colors[i]);
       let m = this.meshes[i];
       if (!m) {
         m = makeBead(this.skin, colorHex, R, C.graphics.shadows);
@@ -93,7 +114,7 @@ class SnakeView {
       }
       m.position.set(px, s.beads[i].z, -py);
       m.scale.setScalar(i === 0 ? R * 1.18 : R);
-      if (this.skin === 'glass') m.rotation.y += dt * 0.7;
+      if (this.skin === 'glass' || colorHex === null) m.rotation.y += dt * (colorHex === null ? 1.8 : 0.7);
       if (i === 0) this.headPos.copy(m.position);
     }
     for (let i = n; i < this.meshes.length; i++) this.meshes[i].visible = false;
@@ -111,9 +132,12 @@ class SnakeView {
     if (s.iv) this.bubble.position.copy(this.headPos);
 
     this.label.position.set(this.headPos.x, this.headPos.y + R * 2.6, this.headPos.z);
-    if (this.nameNode.nodeValue !== s.name) this.nameNode.nodeValue = s.name;
-    const cnt = String(s.colors.length);
-    if (this.countEl.textContent !== cnt) this.countEl.textContent = cnt;
+    this.setLabel(s.name, String(s.colors.length), isSelf);
+  }
+
+  setLabel(name, count, isSelf) {
+    if (this.nameNode.nodeValue !== name) this.nameNode.nodeValue = name;
+    if (this.countEl.textContent !== count) this.countEl.textContent = count;
     this.labelEl.classList.toggle('self', isSelf);
   }
 

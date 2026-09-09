@@ -1,5 +1,5 @@
 // 客户端插值回归测试：直接加载 client/js/net.js（把 '/shared/' 说明符改写成 file: URL），
-// 用合成的服务器包流驱动它，检查渲染的平滑性。
+// 用合成的、到达时刻带抖动的服务器包流驱动它，检查渲染的平滑性。
 // 覆盖两个曾经出过问题的点：
 //   1) 渲染时钟必须单调 —— 早期版本每收一包就把 renderT 拉向目标，收包抖动直接变成画面抖动
 //   2) 长度变化(吃/三消)不得造成位置突跳 —— 早期版本一旦珠数变化就整条蛇吸附到最新帧
@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { CONFIG } from '../shared/config.js';
+import { CONFIG } from '../config/game.config.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sharedUrl = pathToFileURL(path.join(ROOT, 'shared')).href;
@@ -17,6 +17,7 @@ const src = fs.readFileSync(path.join(ROOT, 'client', 'js', 'net.js'), 'utf8')
 const { Net } = await import(`data:text/javascript,${encodeURIComponent(src)}`);
 
 const TICK = 1 / CONFIG.net.tickRate;
+const PKT = CONFIG.net.framesPerPacket;
 const FRAME = 1 / 60;
 const SPACING = CONFIG.snake.beadSpacing;
 const SPEED = CONFIG.snake.baseSpeed;
@@ -26,21 +27,20 @@ const MAP = CONFIG.map.size;
 let seed = 12345;
 const rand = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
 
-/** 合成一帧服务器快照：一条沿 +x 直线前进的蛇，长度按 tick 变化 */
-function makeState(tick, startX) {
+/** 合成一帧服务器位置：一条沿 +x 直线前进的蛇，中途吃到道具、随后三消 */
+function makeFrame(tick, startX) {
   const st = tick * TICK;
   const headX = startX + SPEED * st;
   let n = 6;
-  if (tick >= 40) n = 7;        // 第 40 帧吃到道具
-  if (tick >= 60) n = 4;        // 第 60 帧触发三消
+  if (st >= 0.7) n = 7;         // 吃到道具，长度 +1
+  if (st >= 1.1) n = 4;         // 触发三消，长度 -3
   const b = [];
   for (let i = 0; i < n; i++) {
     b.push(Math.round((((headX - i * SPACING) % MAP) + MAP) % MAP * 100) / 100, 20, 0);
   }
   return {
-    t: 'state', st: Math.round(st * 1000) / 1000,
+    st: Math.round(st * 1000) / 1000,
     snakes: [{ id: 1, n: 'T', sk: 'glass', ai: 0, tr: 0, d: 0, iv: 0, c: new Array(n).fill(0), b }],
-    items: [], ev: [],
   };
 }
 
@@ -52,8 +52,10 @@ function run(startX, label) {
   const clocks = [], heads = [];
   while (simT < 4) {
     while (nextPacketAt <= simT) {                 // 收包时刻带 ±15ms 抖动
-      net.onMessage(makeState(tick++, startX));
-      nextPacketAt += TICK + (rand() - 0.5) * 0.03;
+      const f = [];
+      for (let k = 0; k < PKT; k++) f.push(makeFrame(tick++, startX));
+      net.onMessage({ t: 'state', f, items: [], ev: [] });
+      nextPacketAt += PKT * TICK + (rand() - 0.5) * 0.03;
     }
     net.update(FRAME);
     const s = net.sample();
@@ -87,10 +89,16 @@ function run(startX, label) {
   console.log(`[${label}] 帧数 ${heads.length}  平均位移 ${mean.toFixed(4)}（理论 ${expected.toFixed(4)}）`
     + `  最大 ${max.toFixed(4)}  最小 ${min.toFixed(4)}  最大/平均 ${(max / mean).toFixed(2)}`);
 
-  // 阈值参考：修复后实测 max/mean≈1.14、min/mean≈0.87（即 ±10% 速率纠偏的正常范围）
+  // 阈值来自两项已知误差之和，而不是拍脑袋：
+  //   a) 渲染时钟纠偏被钳在 ±10%，逐帧位移本就会有 ±10% 的正常波动
+  //   b) 线上坐标是 2 位小数，两端各 ±0.01 的量化误差最多再贡献 ±0.02 的逐帧位移
+  // 即 max <= 1.1*expected + 0.02，min >= 0.9*expected - 0.02，换算成相对 mean 约 [0.76, 1.27]。
+  // 实测：max/mean≈1.20、min/mean≈0.88。注入"每收一包就拨表"的老 bug 会由上面的时钟断言抓到，
+  // 注入"长度变化即整条吸附"的老 bug 会让 max/mean 冲到 2.8 以上。
+  const q = 0.02 / mean;
   if (Math.abs(mean - expected) / expected > 0.05) throw new Error(`[${label}] 平均速度偏离理论值`);
-  if (max / mean > 1.25) throw new Error(`[${label}] 存在突跳帧：${max.toFixed(4)} vs 平均 ${mean.toFixed(4)}`);
-  if (min / mean < 0.8) throw new Error(`[${label}] 存在卡顿帧：${min.toFixed(4)} vs 平均 ${mean.toFixed(4)}`);
+  if (max / mean > 1.1 + q) throw new Error(`[${label}] 存在突跳帧：${max.toFixed(4)} vs 平均 ${mean.toFixed(4)}`);
+  if (min / mean < 0.9 - q) throw new Error(`[${label}] 存在卡顿帧：${min.toFixed(4)} vs 平均 ${mean.toFixed(4)}`);
 }
 
 run(10, '普通行进（含吃/三消导致的长度变化）');

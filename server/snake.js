@@ -3,7 +3,7 @@
 // 因此吃珠(头部插入)、三消(数组 splice)、断尾接管(折线拼接)都只是数组操作。
 // 坐标在内部保持"不回绕"的连续值，只在对外输出/碰撞时取模到地图内。
 
-import { CONFIG } from '../shared/config.js';
+import { CONFIG } from '../config/game.config.js';
 import { wrap, turnToward } from '../shared/mathUtil.js';
 
 const S = CONFIG.snake;
@@ -29,6 +29,8 @@ export class Snake {
     this.jumpCd = 0;
     this.invulnUntil = 0;
     this.noSelfUntil = 0;     // 吞并断尾后的短暂自撞豁免
+    this.deadUntil = 0;       // > world.time 表示正在死亡停顿中
+    this.deathPos = null;     // 死亡时的头部位置，停顿期间相机与标记都用它
     this.beads = [];          // 每帧缓存的珠子世界坐标(已取模)
   }
 
@@ -43,6 +45,7 @@ export class Snake {
     this.colors = colors;
     this.invulnUntil = now + S.spawnInvulnerable;
     this.noSelfUntil = now + S.spawnInvulnerable;
+    this.deadUntil = 0;
     // 沿反方向铺一条直线轨迹，保证一出生身体就是完整的
     this.trail = [];
     const cx = Math.cos(angle), cy = Math.sin(angle);

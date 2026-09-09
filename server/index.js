@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { WebSocketServer } from 'ws';
 
-import { CONFIG, SKIN_LABELS } from '../shared/config.js';
+import { CONFIG, SKIN_LABELS } from '../config/game.config.js';
 import { C2S, S2C } from '../shared/protocol.js';
 import { Profiles } from './profiles.js';
 import { World } from './world.js';
@@ -60,7 +60,7 @@ wss.on('connection', (ws, req) => {
     t: S2C.WELCOME,
     config: CONFIG,
     skinLabels: SKIN_LABELS,
-    suggestedNickname: profiles.suggestNickname(ip),
+    nicknames: profiles.nicknames(ip),
     ip,
   });
 
@@ -109,11 +109,15 @@ wss.on('connection', (ws, req) => {
 });
 
 // ---------- 固定步长循环 ----------
-// 定时器以半个 tick 的周期唤醒：Windows 的定时器粒度约 15ms，若按整个 tick 唤醒，
-// 一次唤醒常常凑成 0 步或 2 步，广播间隔会在 30ms 与 60ms 之间跳，客户端插值很难吃掉。
+// 定时器以远小于一个 tick 的周期唤醒：Windows 的定时器粒度约 15ms，若按整个 tick 唤醒，
+// 一次唤醒常常凑成 0 步或 2 步，广播间隔会在 30ms 与 60ms 之间跳。
+// 每个包携带 framesPerPacket 帧位置，客户端只做内插，不预测也不外推。
 const dt = 1 / CONFIG.net.tickRate;
+const FPP = Math.max(1, CONFIG.net.framesPerPacket);
 let acc = 0;
 let last = process.hrtime.bigint();
+let frames = [];
+let evs = [];
 
 setInterval(() => {
   const now = process.hrtime.bigint();
@@ -121,16 +125,26 @@ setInterval(() => {
   last = now;
   if (acc > 0.5) acc = 0.5;          // 掉帧保护：不做追帧螺旋
   let steps = 0;
-  while (acc >= dt && steps++ < 5) {
+  while (acc >= dt && steps++ < 8) {
     world.step(dt);
+    frames.push(world.frame());
+    if (world.events.length) evs.push(...world.events);
     acc -= dt;
   }
-  if (steps === 0) return;
+  if (frames.length < FPP) return;
 
-  const payload = JSON.stringify({ t: S2C.STATE, ...world.snapshot() });
-  for (const [ws, ctx] of clients) {
-    if (ctx.snakeId != null && ws.readyState === ws.OPEN) ws.send(payload);
+  let joined = false;
+  for (const ctx of clients.values()) if (ctx.snakeId != null) { joined = true; break; }
+  if (joined) {
+    const payload = JSON.stringify({
+      t: S2C.STATE, f: frames, items: world.itemsSnapshot(), ev: evs,
+    });
+    for (const [ws, ctx] of clients) {
+      if (ctx.snakeId != null && ws.readyState === ws.OPEN) ws.send(payload);
+    }
   }
+  frames = [];
+  evs = [];
 }, Math.max(1, Math.floor(500 / CONFIG.net.tickRate)));
 
 process.on('SIGINT', () => { profiles.flush(); process.exit(0); });

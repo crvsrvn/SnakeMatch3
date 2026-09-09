@@ -19,10 +19,14 @@
 <div id="labels"></div>
 
 <div id="hud" hidden>
-  <div id="stat">
-    <div class="row"><span id="myName">-</span><span id="myTrophy">🏆 0</span></div>
-    <div class="row small">剩余长度 <b id="myLen">0</b> <span class="tip">— 归零即获胜</span></div>
-    <div id="beads"></div>
+  <div id="left">
+    <canvas id="minimap"></canvas>
+    <div id="net"><b id="fps">--</b> fps · 延迟 <b id="ping">--</b> ms</div>
+    <div id="stat">
+      <div class="row"><span id="myName">-</span><span id="myTrophy">🏆 0</span></div>
+      <div class="row small">剩余长度 <b id="myLen">0</b> <span class="tip">— 归零即获胜</span></div>
+      <div id="beads"></div>
+    </div>
   </div>
 
   <div id="board">
@@ -32,11 +36,18 @@
 
   <div id="hint">
     <b>WASD</b> 移动 · <b>Shift</b> 加速 · <b>空格</b> 跳跃（滞空时不吃道具、可越过蛇身）<br>
-    <b>滚轮</b> 缩放 · <b>M</b> 静音 · 三颗同色相连即消除
+    <b>滚轮</b> 缩放 · <b>M</b> 静音 · 三颗同色相连即消除 · <b>彩虹珠</b>可当任意颜色
   </div>
 
-  <div id="status"><span id="fps">--</span> fps · <span id="ping">--</span> ms</div>
   <div id="toasts"></div>
+
+  <div id="death" hidden>
+    <div class="deadCard">
+      <div class="dTitle">被淘汰</div>
+      <div class="dBy">败给 <b id="dKiller">—</b> · 珠子已散落原地</div>
+      <div class="dCd"><b id="dCount">3</b> 秒后在死亡点附近重生</div>
+    </div>
+  </div>
 </div>
 
 <div id="login">
@@ -45,6 +56,7 @@
     <p class="sub">俯视角 · 局域网对战 · 贪吃蛇三消<br>把自己的珠子全部消完就赢一座奖杯</p>
     <label class="field">昵称
       <input id="nickInput" maxlength="12" placeholder="输入昵称" autocomplete="off">
+      <div id="nickHistory"></div>
     </label>
     <div class="field">皮肤
       <div id="skinList"></div>

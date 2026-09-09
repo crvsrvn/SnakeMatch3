@@ -1,6 +1,6 @@
 // AI 蛇：只做简单随机游走 + 不撞自己，不加速、不跳跃。
 
-import { CONFIG } from '../shared/config.js';
+import { CONFIG } from '../config/game.config.js';
 import { randRange, toroidalDelta } from '../shared/mathUtil.js';
 
 const A = CONFIG.ai;

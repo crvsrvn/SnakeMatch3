@@ -1,10 +1,12 @@
-// 全局可调配置：服务端与客户端共用同一份，保证规则一致。
-// 修改后重启服务器即可生效（客户端在 welcome 消息里收到同一份快照）。
+// 全局可调配置：服务端与客户端共用同一份（客户端在 welcome 消息里收到快照）。
+// 修改后重启服务器即可生效。
+
 export const CONFIG = {
   net: {
     port: 3000,
-    tickRate: 30,          // 服务器模拟 + 广播频率(Hz)
-    interpDelayMs: 80,     // 客户端插值缓冲，越大越平滑、越迟钝；需大于收包间隔抖动
+    tickRate: 60,          // 服务器模拟频率(Hz)
+    framesPerPacket: 2,    // 每个广播包携带的帧数：客户端只做内插，密集的位置流才不会插值到空
+    interpDelayMs: 80,     // 客户端渲染时钟落后量，需大于收包间隔 + 抖动
   },
 
   map: {
@@ -29,25 +31,35 @@ export const CONFIG = {
     selfCollision: 'die',  // 'die' 撞自己死亡重生 | 'none' 不判定
     selfCollisionMinIndex: 4, // 从第几节开始算自撞
     headOnTieEpsilon: 0.08,   // 头对头"正前方程度"差小于此值视为势均力敌，双方同归于尽
+
+    deathPauseSec: 3,      // 死亡后原地停顿多久再重生
+    respawnNearRadius: 12, // 在死亡点多大半径内重生（要保证能看见死亡点标记）
+    deathMarkerSec: 3,     // 重生后死亡点标记还显示多久
   },
 
   // 珠子颜色种类：增删这个数组即可改变颜色数量
   colors: ['#ff4d5a', '#43a8ff', '#ffd23f', '#4ce07a'],
 
   items: {
-    count: 24,             // 地图上随机补充到的道具数量
+    count: 24,             // 地图上随机补充到的普通道具数量（不含万能珠与死亡掉落）
     maxOnMap: 90,          // 含死亡掉落在内的道具总上限，防止极端情况堆积
     radius: 0.55,
     minSpawnDistance: 6,   // 随机生成时与任意蛇珠的最小距离
+    // 万能珠：定时成簇刷新，可当作任意颜色参与三消，未被消除前一直是彩虹色
+    wild: {
+      intervalSec: 30,     // 每隔多久刷一簇
+      clusterSize: 5,      // 一簇几颗
+      spread: 2.4,         // 簇的半径
+      maxOnMap: 15,        // 场上万能珠上限，超过则跳过本次刷新
+    },
   },
 
   ai: {
-    count: 4,              // AI 蛇数量
+    count: 4,              // AI 蛇数量，昵称固定为 bot1 / bot2 ...
     turnIntervalMin: 0.5,
     turnIntervalMax: 2.2,
     maxTurnDelta: 1.8,     // 每次随机转向的最大幅度(rad)
     lookAhead: 3.5,        // 自撞预判距离
-    names: ['小青', '阿黄', '滚滚', '球球', '闪电', '芝麻', '汤圆', '弹壳'],
   },
 
   camera: {
@@ -59,6 +71,11 @@ export const CONFIG = {
     followLerp: 0.14,      // 焦点跟随平滑系数(每帧, 已按 60fps 归一)
   },
 
+  minimap: {
+    size: 168,             // 小地图边长(px)
+    dotSize: 3.4,
+  },
+
   graphics: {
     shadows: true,
     fogDensity: 0.009,
@@ -66,6 +83,10 @@ export const CONFIG = {
 
   skins: ['glass', 'matte', 'metal', 'neon', 'candy'],
   defaultSkin: 'glass',
+
+  profiles: {
+    historyPerIp: 8,       // 每个 IP 记住多少个历史昵称供快捷选择
+  },
 };
 
 export const SKIN_LABELS = {

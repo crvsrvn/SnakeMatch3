@@ -1,13 +1,18 @@
-// 特效：粒子迸溅（一个 Points 池）+ 扩散冲击环（Mesh 池）。全部对象预分配，运行期零 GC。
+// 特效：粒子迸溅（一个 Points 池）+ 扩散冲击环 + 三消"虚拟珠" + 死亡点标记。
+// 全部对象预分配，运行期零 GC。
 // 用叠加混合下"颜色乘以剩余寿命"来做淡出，避免为此写自定义 shader。
 
 import * as THREE from 'three';
+import { GHOST_GEO, makeGhostMaterial } from './skins.js';
 
 const MAX_P = 900;
 const MAX_RING = 16;
+const MAX_GHOST = 30;
+const GHOST_DUR = 0.75;
 
 export class Effects {
-  constructor(scene) {
+  constructor(scene, CONFIG) {
+    this.C = CONFIG;
     this.pos = new Float32Array(MAX_P * 3);
     this.col = new Float32Array(MAX_P * 3);
     this.base = new Float32Array(MAX_P * 3);   // 粒子原始颜色
@@ -41,6 +46,21 @@ export class Effects {
       this.rings.push({ mesh: m, t: 0, dur: 1, scale: 1 });
     }
     this.ringCursor = 0;
+
+    // 三消虚拟珠：被消掉的珠子先原地闪几下再消失，让玩家看清是哪几颗
+    this.ghosts = [];
+    for (let i = 0; i < MAX_GHOST; i++) {
+      const m = new THREE.Mesh(GHOST_GEO, makeGhostMaterial());
+      m.visible = false;
+      scene.add(m);
+      this.ghosts.push({ mesh: m, t: -1, y0: 0 });
+    }
+    this.ghostCursor = 0;
+
+    this.marker = makeDeathMarker();
+    this.marker.visible = false;
+    scene.add(this.marker);
+    this.markerT = 0;
 
     for (let i = 0; i < MAX_P; i++) this.pos[i * 3 + 1] = -9999;
   }
@@ -76,6 +96,23 @@ export class Effects {
     r.t = 0; r.dur = dur; r.scale = scale;
   }
 
+  /** 三消虚拟珠：原地上浮 + 闪烁数次后消失 */
+  ghost(p, colorHex) {
+    const g = this.ghosts[this.ghostCursor];
+    this.ghostCursor = (this.ghostCursor + 1) % MAX_GHOST;
+    g.mesh.position.copy(p);
+    g.mesh.material.color.set(colorHex);
+    g.mesh.material.opacity = 0.9;
+    g.mesh.scale.setScalar(this.C.snake.beadRadius);
+    g.mesh.visible = true;
+    g.t = 0;
+    g.y0 = p.y;
+  }
+
+  markerOn() { this.marker.visible = true; this.markerT = 0; }
+  markerOff() { this.marker.visible = false; }
+  get markerVisible() { return this.marker.visible; }
+
   update(dt) {
     const { pos, vel, life, life0, col, base } = this;
     for (let i = 0; i < MAX_P; i++) {
@@ -107,7 +144,54 @@ export class Effects {
       r.mesh.scale.setScalar(1 + u * r.scale);
       r.mesh.material.opacity = (1 - u) * 0.85;
     }
+
+    for (const g of this.ghosts) {
+      if (g.t < 0) continue;
+      g.t += dt;
+      const u = g.t / GHOST_DUR;
+      if (u >= 1) { g.t = -1; g.mesh.visible = false; continue; }
+      g.mesh.position.y = g.y0 + u * 1.5;
+      g.mesh.scale.setScalar(this.C.snake.beadRadius * (1 + u * 0.55));
+      // 前 70% 闪烁三下，之后淡出
+      const blink = 0.55 + 0.45 * Math.cos(g.t * 40);
+      g.mesh.material.opacity = u < 0.7 ? 0.95 * blink : 0.95 * blink * (1 - (u - 0.7) / 0.3);
+    }
+
+    if (this.marker.visible) {
+      this.markerT += dt;
+      const pulse = 1 + Math.sin(this.markerT * 5) * 0.12;
+      this.marker.children[0].scale.setScalar(pulse);
+      this.marker.children[1].material.opacity = 0.22 + Math.sin(this.markerT * 5) * 0.08;
+    }
   }
+}
+
+/** 死亡点标记：地面脉冲圆环 + 一道竖直光柱 */
+function makeDeathMarker() {
+  const g = new THREE.Group();
+
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(1.5, 1.9, 48),
+    new THREE.MeshBasicMaterial({
+      color: 0xff6a7d, transparent: true, opacity: 0.75, side: THREE.DoubleSide,
+      depthWrite: false, blending: THREE.AdditiveBlending,
+    }),
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.05;
+  g.add(ring);
+
+  const beam = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.42, 0.42, 9, 16, 1, true),
+    new THREE.MeshBasicMaterial({
+      color: 0xff6a7d, transparent: true, opacity: 0.25, side: THREE.DoubleSide,
+      depthWrite: false, blending: THREE.AdditiveBlending,
+    }),
+  );
+  beam.position.y = 4.5;
+  g.add(beam);
+
+  return g;
 }
 
 function sprite() {
