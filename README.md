@@ -136,4 +136,4 @@ tests/     无头回归测试
 ```
 
 - 实现细节与设计取舍：[`docs/design.md`](docs/design.md)
-- 双端通信协议详解、公网化方案、跨境部署（大陆↔海外）：[`docs/networking.md`](docs/networking.md)
+- 双端通信协议详解、公网化方案、跨境部署、公网可达最小清单：[`docs/networking.md`](docs/networking.md)
