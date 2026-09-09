@@ -228,7 +228,7 @@ export class World {
   }
 
   kill(s, byName) {
-    this.events.push({ t: EV.DEATH, name: s.name, by: byName });
+    this.events.push({ t: EV.DEATH, id: s.id, name: s.name, by: byName });
     this.placeAtFreeSpot(s);
   }
 
@@ -247,7 +247,7 @@ export class World {
       if (s.colors.length === 0) {
         s.trophies++;
         if (s.profile) this.profiles.addTrophy(s.profile);
-        this.events.push({ t: EV.WIN, name: s.name, trophies: s.trophies });
+        this.events.push({ t: EV.WIN, id: s.id, name: s.name, trophies: s.trophies });
         this.placeAtFreeSpot(s);
       }
     }
@@ -271,7 +271,7 @@ export class World {
       });
     }
     return {
-      t: r3(this.time),
+      st: r3(this.time),   // 快照时间戳（不能叫 t，会与消息类型字段冲突）
       snakes,
       items: this.items.map((it) => [it.id, r2(it.x), r2(it.y), it.c]),
       ev: this.events,

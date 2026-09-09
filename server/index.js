@@ -36,8 +36,18 @@ function send(ws, obj) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj));
 }
 
+const BANNED = ['<', '>', '&', '"', "'", '\\', '`'];
+
 function sanitizeNickname(raw, ip) {
-  const s = String(raw ?? '').trim().slice(0, 12);
+  // 去掉控制字符与 HTML 敏感字符：昵称会被其他客户端渲染进名牌
+  let s = '';
+  for (const ch of String(raw ?? '')) {
+    const code = ch.codePointAt(0);
+    if (code < 0x20 || code === 0x7f) continue;
+    if (BANNED.includes(ch)) continue;
+    s += ch;
+  }
+  s = s.trim().slice(0, 12);
   return s || `玩家${ip.split('.').pop() || '?'}`;
 }
 

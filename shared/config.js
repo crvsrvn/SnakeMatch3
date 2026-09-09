@@ -50,17 +50,17 @@ export const CONFIG = {
   },
 
   camera: {
-    distance: 34,          // 相机到蛇头的距离
+    distance: 28,          // 相机到蛇头的距离
     minDistance: 16,
     maxDistance: 64,
-    pitchDeg: 62,          // 俯角(90 = 正俯视)
+    pitchDeg: 64,          // 俯角(90 = 正俯视)
     fov: 55,
     followLerp: 0.14,      // 焦点跟随平滑系数(每帧, 已按 60fps 归一)
   },
 
   graphics: {
     shadows: true,
-    fogDensity: 0.006,
+    fogDensity: 0.009,
   },
 
   skins: ['glass', 'matte', 'metal', 'neon', 'candy'],
