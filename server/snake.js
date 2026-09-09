@@ -149,21 +149,23 @@ export class Snake {
         o: 0,
       });
     }
-    if (mapped.length === 0) return;
 
-    const trail = mapped.concat(this.trail);
-    let o = this.odo;
-    trail[0].o = o;
-    for (let i = 1; i < trail.length; i++) {
-      const dx = trail[i].x - trail[i - 1].x, dy = trail[i].y - trail[i - 1].y;
-      o -= Math.hypot(dx, dy);
-      trail[i].o = o;
+    // 只切下一颗珠时没有可拼接的折线，退化成"在头部插入"，头位置与朝向不变
+    if (mapped.length > 0) {
+      const trail = mapped.concat(this.trail);
+      let o = this.odo;
+      trail[0].o = o;
+      for (let i = 1; i < trail.length; i++) {
+        const dx = trail[i].x - trail[i - 1].x, dy = trail[i].y - trail[i - 1].y;
+        o -= Math.hypot(dx, dy);
+        trail[i].o = o;
+      }
+      this.trail = trail;
+      this.x = trail[0].x; this.y = trail[0].y; this.z = trail[0].z;
+      const p1 = trail[1];
+      this.dir = Math.atan2(trail[0].y - p1.y, trail[0].x - p1.x);
+      this.targetDir = this.dir;
     }
-    this.trail = trail;
-    this.x = trail[0].x; this.y = trail[0].y; this.z = trail[0].z;
-    const p1 = trail[1];
-    this.dir = Math.atan2(trail[0].y - p1.y, trail[0].x - p1.x);
-    this.targetDir = this.dir;
 
     this.colors = colors.slice().reverse().concat(this.colors);
     if (this.colors.length > S.maxLength) this.colors.length = S.maxLength;

@@ -29,9 +29,6 @@ export class SnakeViews {
       if (!seen.has(id)) { v.dispose(); this.views.delete(id); }
     }
   }
-
-  /** 取某条蛇某颗珠的渲染坐标（特效定位用） */
-  headOf(id) { return this.views.get(id)?.headPos ?? null; }
 }
 
 class SnakeView {
@@ -73,6 +70,7 @@ class SnakeView {
     const MAP = C.map.size;
     const R = C.snake.beadRadius;
     const n = s.beads.length;
+    if (n === 0) return;
 
     // 沿链条展开：第 0 颗对齐到相机焦点附近，其余相对前一颗取环面最短路
     let px = anchor.x + toroidalDelta(anchor.x, s.beads[0].x, MAP);

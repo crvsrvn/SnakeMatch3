@@ -9,10 +9,8 @@ export const C2S = {
 export const S2C = {
   WELCOME: 'welcome', // { config, skinLabels, suggestedNickname, ip }
   JOINED: 'joined',   // { id, nickname, skin, trophies }
-  STATE: 'state',     // { t, snakes:[], items:[], ev:[] }
-  BOARD: 'board',     // { rows:[{name,trophies,length,me}] }
+  STATE: 'state',     // { st, snakes:[], items:[], ev:[] }
   PONG: 'pong',       // { c }
-  ERROR: 'error',     // { msg }
 };
 
 // 事件类型（随 STATE 一起下发，客户端用于特效/音效/公告）

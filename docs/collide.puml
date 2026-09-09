@@ -7,14 +7,14 @@ participant "Snake B(被撞者)" as B
 
 World -> B : severAt(k)
 activate B
-B -> B : 取轨迹上弧长 [k*sp, (n-1)*sp] 的折线\ncolors.splice(k) 截断
+B -> B : 取轨迹上弧长 [k*sp, (n-1)*sp] 的折线\ncolors 截断为前 k 节
 B --> World : { 折线点集 pts, 颜色 colors }
 deactivate B
 
 World -> A : prependChain(pts, colors)
 activate A
 A -> A : 以"连接点"为基准平移到 A 头部坐标系\n反转后前置到 A 的轨迹\n新头 = B 原尾端, 朝向沿 B 尾部外侧
-A -> A : colors = reverse(colors) ++ A.colors
+A -> A : colors = reverse(colors) ++ A.colors\n超过 maxLength 则截断
 A --> World : 完成
 deactivate A
 
