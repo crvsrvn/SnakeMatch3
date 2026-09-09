@@ -18,7 +18,9 @@ npm start
 局域网: http://192.168.x.x:3000
 ```
 
-无需注册，填个昵称就进。奖杯按 `IP + 昵称` 记录在 `data/players.json`。
+无需注册，填个昵称就进。奖杯按 `IP + 昵称` 记录在 `database/players.json`；
+**同一个 IP 开多个网页、用不同昵称，就是多个各自独立的玩家**，可以同时游玩、各记各的奖杯。
+每个 IP 用过的昵称会记在登录界面，下次点一下就能选。
 
 ## 玩法
 
@@ -34,49 +36,59 @@ npm start
 
 - 地图是正方形，四边穿越到对侧。
 - 吃到彩色道具，头部**增加**一颗同色珠。
-- 身上出现 **3 颗及以上相连同色**即消除，可连锁。
+- 身上出现 **3 颗及以上相连同色**即消除，可连锁；被消掉的珠子会先原地闪几下再消失。
 - **长度归零 = 获胜**，奖杯 +1 并重新出生。
+- **彩虹万能珠**：每隔 30 秒在随机位置成簇刷新（小地图上有标记），**可当作任意颜色**参与三消；没被消掉之前一直保持彩虹色。
 - **头撞别人身体**：对方从撞击点断尾，断尾接到你头前，对方的尾端变成你的新头（你会顺着他的旧路径倒着开出去）。
-- **头撞头**：比谁撞得更"正"（朝向与指向对方的夹角更小）。胜者头部直接消掉一颗珠，败者死亡重生；接近平局时双方各消一颗、谁也不死。
-- **撞到自己**：死亡重生。
+- **头撞头**：比谁撞得更"正"（朝向与指向对方的夹角更小）。胜者头部直接消掉一颗珠，败者死亡；**正得一样则同归于尽**。
+- **撞到自己**：死亡。注意最小转弯半径约 2.5 单位（周长约 16 节），所以只有蛇长超过一圈时才咬得到自己。
+- **死亡**：珠子全部原地散落成道具（谁都能捡），原地停顿 3 秒并弹出死亡面板，然后在**死亡点附近**重生；死亡点会用光柱标记，重生后再保留 3 秒，方便你判断刚才发生了什么。
 - 断线不重连，重进即重新开始（奖杯保留）。
 
 ## 配置
 
-所有可调参数集中在 [`shared/config.js`](shared/config.js)，改完重启服务器生效（客户端会自动拿到同一份）：
+所有可调参数集中在根目录的 [`config/game.config.js`](config/game.config.js)，改完重启服务器生效（客户端会随 welcome 消息自动拿到同一份）：
 
 ```
-map.size            地图边长
-snake.baseSpeed     速度        snake.sprintMultiplier  冲刺倍率
-snake.initialLength 初始长度    snake.turnRate          转向速度
-colors[]            颜色种类（增删数组即可）
-items.count         同时存在的道具数量
-ai.count            AI 数量
-camera.distance     相机距离    camera.pitchDeg         俯角
-net.tickRate        模拟/广播频率
-graphics.shadows    阴影开关（性能不足时关掉）
+map.size              地图边长
+snake.baseSpeed       速度          snake.sprintMultiplier  冲刺倍率
+snake.initialLength   初始长度      snake.turnRate          转向速度
+snake.deathPauseSec   死亡停顿      snake.respawnNearRadius 重生半径
+colors[]              颜色种类（增删数组即可）
+items.count           普通道具数量  items.wild.*            万能珠刷新间隔/簇大小/上限
+ai.count              AI 数量（昵称固定为 bot1 / bot2 …）
+camera.distance       相机距离      camera.pitchDeg         俯角
+minimap.size          小地图大小
+net.tickRate          模拟频率      net.framesPerPacket     每包携带几帧位置
+net.interpDelayMs     客户端插值缓冲
+graphics.shadows      阴影开关（性能不足时关掉）
 ```
 
 默认值按"平均同时 4 人在线"调校，取舍理由见 [设计文档](docs/design.md#7-平衡性初值预计同时-4-人在线)。
 
 ## 皮肤
 
-`玻璃珠`（半透外壳 + 内芯猫眼）、`哑光陶土`、`抛光金属`、`霓虹发光`、`糖果釉面`，进场前选择。
+`玻璃珠`（半透外壳 + 内芯猫眼）、`哑光陶土`、`抛光金属`、`霓虹发光`、`糖果釉面`，进场前选择。万能珠在任何皮肤下都是彩虹色。
 
 ## 测试
 
 ```bash
-node tests/sim.js
+npm test
 ```
 
-无头压力测试：12 条 AI 挤在缩小的地图里跑 120 秒，校验坐标、珠间距连续性、长度上限等不变量，并统计各类事件与带宽峰值。
+- `tests/sim.js` — 无头压力测试：12 条 AI 挤在缩小的地图里跑 120 秒，校验坐标、珠间距连续性、
+  长度上限、死亡停顿状态、死亡/重生配对等不变量，并统计各类事件与带宽峰值。
+- `tests/interp.js` — 客户端插值测试：用到达时刻带抖动的合成包流驱动真实的 `client/js/net.js`，
+  校验渲染时钟单调、无突跳帧/卡顿帧（历史上这两条各对应一个真实 bug）。
 
 ## 目录
 
 ```
-shared/    配置、协议、环面数学（服务端与浏览器共用）
+config/    game.config.js —— 所有可调参数
+database/  players.json   —— 昵称与奖杯（运行时生成）
+shared/    协议、环面数学（服务端与浏览器共用）
 server/    world 权威模拟 / snake 轨迹模型 / match3 / ai / profiles
-client/    three.js 渲染、皮肤、特效、音效、HUD
+client/    three.js 渲染、皮肤、特效、音效、小地图、HUD
 docs/      设计文档与 PlantUML 图
 tests/     无头回归测试
 ```

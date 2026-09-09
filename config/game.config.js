@@ -72,7 +72,7 @@ export const CONFIG = {
   },
 
   minimap: {
-    size: 168,             // 小地图边长(px)
+    size: 184,             // 小地图边长(px)
     dotSize: 3.4,
   },
 

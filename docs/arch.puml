@@ -6,41 +6,49 @@ skinparam shadowing false
 
 package "浏览器客户端" {
   [input.js\n键盘 -> 意图] as IN
-  [net.js\nWebSocket + 快照缓冲] as NET
-  [main.js\n主循环/插值] as MAIN
+  [net.js\n多帧包缓冲 + 内插] as NET
+  [main.js\n主循环/相机/事件] as MAIN
   [scene.js\nthree.js 场景/相机/地面] as SCENE
   [snakeView.js\n珠体网格池] as SV
-  [skins.js\n皮肤材质(玻璃珠等)] as SKIN
-  [effects.js\n粒子/冲击环] as FX
+  [skins.js\n皮肤材质(玻璃珠/彩虹)] as SKIN
+  [itemView.js\n道具与万能珠] as IV
+  [effects.js\n粒子/冲击环/虚拟珠/死亡标记] as FX
   [audio.js\nWebAudio 合成音效] as AUD
-  [hud.js\n昵称/排行/提示] as HUD
+  [minimap.js\n小地图] as MM
+  [hud.js\n状态/排行/死亡面板] as HUD
 }
 
 package "Node 本地服务器" {
-  [index.js\nHTTP静态 + WS接入] as SRV
-  [world.js\n30Hz 权威模拟] as WORLD
+  [index.js\nHTTP静态 + WS + 定步循环] as SRV
+  [world.js\n60Hz 权威模拟] as WORLD
   [snake.js\n轨迹/移动/断尾] as SNK
-  [match3.js\n三消消除+连锁] as M3
+  [match3.js\n三消 + 万能珠通配] as M3
   [ai.js\n随机游走AI] as AI
-  [profiles.js\nIP::昵称 -> 奖杯] as PROF
-  database "data/players.json" as DB
+  [profiles.js\nIP::昵称 -> 奖杯/历史昵称] as PROF
+}
+
+package "根目录" {
+  [config/game.config.js] as CFG
+  database "database/players.json" as DB
 }
 
 package "shared/（同构）" {
-  [config.js] as CFG
   [protocol.js] as PROTO
   [mathUtil.js] as MU
 }
 
 IN --> NET : input/jump
 NET <--> SRV : WebSocket(JSON)
-NET --> MAIN : 快照队列
+NET --> MAIN : 帧队列 + 事件
 MAIN --> SCENE
 MAIN --> SV
-SV --> SKIN
+MAIN --> IV
 MAIN --> FX
 MAIN --> AUD
+MAIN --> MM
 MAIN --> HUD
+SV --> SKIN
+IV --> SKIN
 SRV --> WORLD
 WORLD --> SNK
 WORLD --> M3
@@ -48,7 +56,8 @@ WORLD --> AI
 WORLD --> PROF
 PROF --> DB
 CFG ..> WORLD
-CFG ..> MAIN
+CFG ..> SRV
+CFG ..> MAIN : 随 welcome 下发
 PROTO ..> NET
 PROTO ..> SRV
 MU ..> SNK
