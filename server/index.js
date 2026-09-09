@@ -12,9 +12,6 @@ import { C2S, S2C } from '../shared/protocol.js';
 import { Profiles } from './profiles.js';
 import { World } from './world.js';
 
-// Console window title. The image name is handled by scripts/start.js (see the notes there).
-process.title = 'SnakeMatch3_Server';
-
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const app = express();

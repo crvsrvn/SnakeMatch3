@@ -5,18 +5,14 @@
   "type": "module",
   "description": "Top-down LAN multiplayer snake meets match-3 (three.js + an authoritative Node server)",
   "scripts": {
-    "start": "node scripts/start.js",
+    "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "test": "node tests/match3.js && node tests/sim.js && node tests/interp.js",
-    "start:plain": "node scripts/start.js --plain",
     "stress": "node tests/stress.js"
   },
   "dependencies": {
     "express": "^4.21.2",
     "three": "^0.180.0",
     "ws": "^8.18.0"
-  },
-  "optionalDependencies": {
-    "rcedit": "^5.0.2"
   }
 }

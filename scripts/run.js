@@ -10,10 +10,12 @@ import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { CONFIG } from '../config/game.config.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+// Windows 上 import() 不接受盘符路径，必须给 file:// URL
+const ENTRY = pathToFileURL(path.join(ROOT, 'server', 'index.js')).href;
 const PORT = CONFIG.net.port;
 const LOCAL_URL = `http://localhost:${PORT}`;
 const mode = process.argv[2] || 'both';
@@ -24,7 +26,7 @@ if (!fs.existsSync(path.join(ROOT, 'node_modules', 'express'))) {
 
 if (mode === 'server') {
   await requireFreePort();
-  await import('./start.js');
+  await import(ENTRY);
 } else if (mode === 'client') {
   if (!(await portInUse(PORT))) {
     fail(`The server is not running (nothing answers on port ${PORT}).`,
@@ -40,7 +42,7 @@ if (mode === 'server') {
     process.exit(0);
   }
   waitUntilUp().then(() => { printAddresses(); openBrowser(LOCAL_URL); });
-  await import('./start.js');
+  await import(ENTRY);
 }
 
 // ---------- Helpers ----------

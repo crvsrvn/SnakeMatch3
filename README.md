@@ -29,7 +29,6 @@ The command-line equivalents:
 npm start                    # server only
 node scripts/run.js client   # browser only
 node scripts/run.js both     # server, then browser
-npm run start:plain          # plain node, skipping the process-rename wrapper
 npm test                     # regression tests
 npm run stress               # server load test
 ```

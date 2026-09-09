@@ -28,7 +28,6 @@ npm install
 npm start                    # 只起服务器
 node scripts/run.js client   # 只开浏览器
 node scripts/run.js both     # 起服务器并开浏览器
-npm run start:plain          # 直接用 node 起，不做进程改名
 npm test                     # 回归测试
 npm run stress               # 服务器压测
 ```

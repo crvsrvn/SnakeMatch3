@@ -19,6 +19,9 @@ let CONFIG = null, MAP = 0;
 let gfx = null, views = null, itemViews = null, fx = null, hud = null, minimap = null;
 let myId = null, anchorInit = false, camDist = 0, matchStreak = 0, lastMatchAt = 0;
 let myDeath = null, myKiller = '', markerUntil = 0;
+let severArmedAt = 0;                    // 接上断尾的时刻，用来把随后那一帧的相机瞬移换成滑移
+const camGlide = { x: 0, y: 0, t: 0 };   // 待消化的相机偏移（游戏坐标）与剩余秒数
+const SEVER_ARM_MS = 1000;               // 事件先到、瞬移那一帧晚到（插值延迟），这是等待窗口
 const anchor = { x: 0, y: 0 };
 const tmp = new THREE.Vector3();
 
@@ -261,7 +264,26 @@ function frame(now) {
 function followCamera(target, dt, teleported) {
   const dx = toroidalDelta(anchor.x, target.x, MAP);
   const dy = toroidalDelta(anchor.y, target.y, MAP);
-  if (!anchorInit || teleported || Math.hypot(dx, dy) > 20) {
+  const jumped = !anchorInit || teleported || Math.hypot(dx, dy) > 20;
+  // 接上断尾时头部被移到断尾的另一端，是唯一一种“玩家没动、画面却整个换地方”的瞬移：
+  // 直接吸附会让人瞬间失去方向，所以保留当前取景，再用 severGlideSec 把偏移滑掉。
+  if (jumped && anchorInit && camGlide.t <= 0
+      && performance.now() - severArmedAt < SEVER_ARM_MS) {
+    camGlide.x = -dx; camGlide.y = -dy; camGlide.t = CONFIG.camera.severGlideSec;
+    severArmedAt = 0;
+  }
+  if (camGlide.t > 0) {
+    // 焦点 = 当前头部 + 逐渐衰减的偏移：起点正好是滑移开始时的取景，终点正好是头部，
+    // smoothstep 让两端速度为零，中途走完大部分距离。滑移期间不吸附：同一次瞬移会在
+    // 相邻两帧之间被采样很多次，tp 标记会连着好几帧都为真。
+    camGlide.t = Math.max(0, camGlide.t - dt);
+    const u = camGlide.t / CONFIG.camera.severGlideSec;
+    const e = u * u * (3 - 2 * u);
+    anchor.x = wrap(target.x + camGlide.x * e, MAP);
+    anchor.y = wrap(target.y + camGlide.y * e, MAP);
+    return;
+  }
+  if (jumped) {
     anchor.x = target.x; anchor.y = target.y; anchorInit = true;
     return;
   }
@@ -329,7 +351,10 @@ function onEvents(evs) {
         if (near > 0.05) A.sfxCrack(near);
         // Scan wave over the grafted section, so it is obvious where those beads came from
         views.flash(e.aid, e.n);
-        if (e.aid === myId) hud.toast(t('toast.severed', { name: e.bn, n: e.n }), 'gain');
+        if (e.aid === myId) {
+          severArmedAt = performance.now();   // 我接上了断尾，给随后的头部瞬移准备好相机滑移
+          hud.toast(t('toast.severed', { name: e.bn, n: e.n }), 'gain');
+        }
         break;
       }
       case EV.HITHEAD: {

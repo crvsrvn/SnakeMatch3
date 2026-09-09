@@ -77,6 +77,7 @@ export const CONFIG = {
     pitchDeg: 64,          // pitch in degrees (90 = straight down)
     fov: 55,
     followLerp: 0.14,      // focus smoothing per frame, normalised to 60fps
+    severGlideSec: 1,      // 接上断尾时头部会瞬移到断尾另一端：相机用这么长时间滑过去，而不是直接吸附
   },
 
   board: {
@@ -107,12 +108,12 @@ export const CONFIG = {
     // `enabled` off if the GPU struggles.
     bloom: {
       enabled: true,
-      strength: 0.7,       // bloom strength
-      radius: 0.55,        // spread radius
+      strength: 0.22,      // bloom strength：过高会让发光皮肤糊成一团白，刺眼
+      radius: 0.4,         // spread radius：收窄扩散，光晕更贴合物体轮廓
       // Luminance threshold. Under EffectComposer the scene is linear HDR and sunlit
       // ground sits around 0.6-1.0, so the threshold has to clear 1.0 for bloom to land
       // only on the emissive beads and the boundary wall.
-      threshold: 1.15,
+      threshold: 1.6,
       scale: 0.5,          // resolution multiplier for the bloom pyramid: a blur never
                            // needed full resolution, and 0.5 cuts its pixel count to a quarter
     },
