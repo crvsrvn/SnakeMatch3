@@ -11,6 +11,25 @@ CONFIG.items.wild.intervalSec = 8;
 const { World } = await import('../server/world.js');
 const { EV, WILD } = await import('../shared/protocol.js');
 
+// ---- 运动学：冲刺应该更快但更难拐弯 ----
+{
+  const { Snake } = await import('../server/snake.js');
+  const radius = (sprint) => {
+    const s = new Snake(1, 't', false, 'glass');   // isAI=false，否则不会真的冲刺
+    s.respawn(20, 20, 0, [0, 1, 2], 0);
+    s.sprint = sprint;
+    s.targetDir = Math.PI;                          // 一直要求掉头 -> 一直以最大角速度转
+    const dt = 1 / CONFIG.net.tickRate;
+    return s.speed() / s.turnRate();                // 最小转弯半径 = 速度 / 角速度
+  };
+  const normal = radius(false), sprinting = radius(true);
+  const expected = CONFIG.snake.sprintMultiplier / CONFIG.snake.sprintTurnFactor;
+  console.log(`转弯半径: 常速 ${normal.toFixed(2)}  冲刺 ${sprinting.toFixed(2)}`
+    + `  (${(sprinting / normal).toFixed(2)}x，期望 ${expected.toFixed(2)}x)`);
+  if (Math.abs(sprinting / normal - expected) > 1e-6) throw new Error('冲刺转弯半径不符合配置');
+  if (sprinting <= normal) throw new Error('冲刺时反而更好拐弯了');
+}
+
 const world = new World({ addTrophy() {} });
 const dt = 1 / CONFIG.net.tickRate;
 const counts = {};

@@ -21,7 +21,7 @@
 <div id="hud" hidden>
   <div id="left">
     <canvas id="minimap"></canvas>
-    <div id="net"><b id="fps">--</b> fps · 延迟 <b id="ping">--</b> ms</div>
+    <div id="net"><b id="fps">--</b> fps · <b id="frameMs">--</b> ms/帧 · 延迟 <b id="ping">--</b> ms</div>
     <div id="stat">
       <div class="row"><span id="myName">-</span><span id="myTrophy">🏆 0</span></div>
       <div class="row small">剩余长度 <b id="myLen">0</b> <span class="tip">— 归零即获胜</span></div>
@@ -30,7 +30,7 @@
   </div>
 
   <div id="board">
-    <div class="title">在线</div>
+    <div class="title" id="boardTitle">在线</div>
     <ol id="boardList"></ol>
   </div>
 
@@ -56,6 +56,7 @@
     <p class="sub">俯视角 · 局域网对战 · 贪吃蛇三消<br>把自己的珠子全部消完就赢一座奖杯</p>
     <label class="field">昵称
       <input id="nickInput" maxlength="12" placeholder="输入昵称" autocomplete="off">
+      <div id="nickHint"></div>
       <div id="nickHistory"></div>
     </label>
     <div class="field">皮肤

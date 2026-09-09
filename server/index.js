@@ -12,6 +12,9 @@ import { C2S, S2C } from '../shared/protocol.js';
 import { Profiles } from './profiles.js';
 import { World } from './world.js';
 
+// 控制台窗口标题；映像名由 scripts/start.js 负责（见那里的说明）
+process.title = 'SnakeMatch3_Server';
+
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const app = express();
@@ -38,7 +41,7 @@ function send(ws, obj) {
 
 const BANNED = ['<', '>', '&', '"', "'", '\\', '`'];
 
-function sanitizeNickname(raw, ip) {
+function sanitizeNickname(raw, fallback) {
   // 去掉控制字符与 HTML 敏感字符：昵称会被其他客户端渲染进名牌
   let s = '';
   for (const ch of String(raw ?? '')) {
@@ -48,7 +51,7 @@ function sanitizeNickname(raw, ip) {
     s += ch;
   }
   s = s.trim().slice(0, 12);
-  return s || `玩家${ip.split('.').pop() || '?'}`;
+  return s || fallback;
 }
 
 wss.on('connection', (ws, req) => {
@@ -61,6 +64,8 @@ wss.on('connection', (ws, req) => {
     config: CONFIG,
     skinLabels: SKIN_LABELS,
     nicknames: profiles.nicknames(ip),
+    defaultNickname: world.freeDefaultName(),
+    taken: world.takenNames(),
     ip,
   });
 
@@ -72,7 +77,17 @@ wss.on('connection', (ws, req) => {
     switch (msg.t) {
       case C2S.JOIN: {
         if (ctx.snakeId != null) return;
-        const nickname = sanitizeNickname(msg.nickname, ip);
+        const nickname = sanitizeNickname(msg.nickname, world.freeDefaultName());
+        if (world.isNameTaken(nickname)) {
+          send(ws, {
+            t: S2C.REJECT,
+            reason: `昵称「${nickname}」已经有人在用`,
+            suggestion: world.freeVariant(nickname),
+            taken: world.takenNames(),
+          });
+          console.log(`[!] ${ip} 想用已被占用的昵称 ${nickname}，已拒绝`);
+          return;
+        }
         const skin = CONFIG.skins.includes(msg.skin) ? msg.skin : CONFIG.defaultSkin;
         const profile = profiles.get(ip, nickname);
         const s = world.addPlayer(profile, skin);

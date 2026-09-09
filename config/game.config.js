@@ -10,18 +10,19 @@ export const CONFIG = {
   },
 
   map: {
-    size: 110,             // 正方形地图边长(世界单位)，四边穿越到对侧
+    size: 50,             // 正方形地图边长(世界单位)，四边穿越到对侧
     gridStep: 5,           // 地面网格线间距，必须能整除 size
   },
 
   snake: {
     beadRadius: 0.6,
     beadSpacing: 0.92,     // 相邻球心距(略小于直径 -> 视觉相连)
-    initialLength: 6,      // 出生长度
-    maxLength: 40,         // 长度上限(吞并断尾时截断)
+    initialLength: 30,      // 出生长度
+    maxLength: 300,         // 长度上限(吞并断尾时截断)
     baseSpeed: 8,          // 单位/秒
-    sprintMultiplier: 1.75,// Shift 加速倍率
-    turnRate: 3.2,         // 最大角速度(rad/s) -> 最小转弯半径 = baseSpeed/turnRate
+    sprintMultiplier: 2,// Shift 加速倍率
+    turnRate: 5,         // 最大角速度(rad/s) -> 最小转弯半径 = baseSpeed/turnRate
+    sprintTurnFactor: 0.3, // 冲刺时角速度乘这个系数：速度更快、转向更钝，冲刺要付出代价
     jumpHeight: 2.4,
     jumpDuration: 0.6,
     jumpCooldown: 1.0,
@@ -38,24 +39,24 @@ export const CONFIG = {
   },
 
   // 珠子颜色种类：增删这个数组即可改变颜色数量
-  colors: ['#ff4d5a', '#43a8ff', '#ffd23f', '#4ce07a'],
+  colors: ['#ff4d5a', '#ffae43', '#e9ff3f', '#4ce060', '#4cd6e0', '#3d49f0', '#cc4ce0'],
 
   items: {
-    count: 24,             // 地图上随机补充到的普通道具数量（不含万能珠与死亡掉落）
-    maxOnMap: 90,          // 含死亡掉落在内的道具总上限，防止极端情况堆积
+    count: 25,             // 地图上随机补充到的普通道具数量（不含万能珠与死亡掉落）
+    maxOnMap: 50,          // 场上道具总上限，防止极端情况堆积
     radius: 0.55,
     minSpawnDistance: 6,   // 随机生成时与任意蛇珠的最小距离
     // 万能珠：定时成簇刷新，可当作任意颜色参与三消，未被消除前一直是彩虹色
     wild: {
       intervalSec: 30,     // 每隔多久刷一簇
-      clusterSize: 5,      // 一簇几颗
-      spread: 2.4,         // 簇的半径
-      maxOnMap: 15,        // 场上万能珠上限，超过则跳过本次刷新
+      clusterSize: 2,      // 一簇几颗
+      spread: 5,         // 簇的半径
+      maxOnMap: 5,        // 场上万能珠上限，超过则跳过本次刷新
     },
   },
 
   ai: {
-    count: 4,              // AI 蛇数量，昵称固定为 bot1 / bot2 ...
+    count: 10,              // AI 蛇数量，昵称固定为 bot1 / bot2 ...
     turnIntervalMin: 0.5,
     turnIntervalMax: 2.2,
     maxTurnDelta: 1.8,     // 每次随机转向的最大幅度(rad)
@@ -71,12 +72,21 @@ export const CONFIG = {
     followLerp: 0.14,      // 焦点跟随平滑系数(每帧, 已按 60fps 归一)
   },
 
+  board: {
+    maxRows: 30,           // 排行榜最多显示几行（自己一定在内）
+    updateHz: 5,           // 排行榜刷新频率，没必要跟着渲染帧走
+  },
+
   minimap: {
     size: 184,             // 小地图边长(px)
     dotSize: 3.4,
   },
 
   graphics: {
+    maxFps: 60,            // 客户端渲染上限，高刷屏也不会跑超
+    cullMargin: 12,        // 可见半径 = 相机距离*1.5 + 该值；之外的蛇与道具不进渲染队列
+    labelRadius: 30,       // 超出这个距离就不画昵称牌，人一多屏幕会被名字糊满
+    beadSegments: [16, 11],// 珠子球体的经纬分段：面数直接乘在珠子总数上，人多时最敏感
     shadows: true,
     fogDensity: 0.009,
   },
@@ -96,3 +106,10 @@ export const SKIN_LABELS = {
   neon: '霓虹发光',
   candy: '糖果釉面',
 };
+
+// 压测用的临时覆盖，正常游玩不需要：SM3_AI=100 SM3_MAP=380 npm start
+if (typeof process !== 'undefined' && process.env) {
+  if (process.env.SM3_AI) CONFIG.ai.count = Number(process.env.SM3_AI);
+  if (process.env.SM3_MAP) CONFIG.map.size = Number(process.env.SM3_MAP);
+  if (process.env.SM3_ITEMS) CONFIG.items.count = Number(process.env.SM3_ITEMS);
+}

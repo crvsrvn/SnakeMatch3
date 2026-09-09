@@ -55,8 +55,16 @@ export class Snake {
     this.beads = this.computeBeads();
   }
 
+  /** AI 不会冲刺 */
+  sprinting() { return this.sprint && !this.isAI; }
+
   speed() {
-    return S.baseSpeed * (this.sprint && !this.isAI ? S.sprintMultiplier : 1);
+    return S.baseSpeed * (this.sprinting() ? S.sprintMultiplier : 1);
+  }
+
+  /** 冲刺时转向变钝：跑得快就别想拐急弯 */
+  turnRate() {
+    return S.turnRate * (this.sprinting() ? S.sprintTurnFactor : 1);
   }
 
   tryJump(now) {
@@ -67,7 +75,7 @@ export class Snake {
   }
 
   step(dt) {
-    this.dir = turnToward(this.dir, this.targetDir, S.turnRate * dt);
+    this.dir = turnToward(this.dir, this.targetDir, this.turnRate() * dt);
     const step = this.speed() * dt;
     this.x += Math.cos(this.dir) * step;
     this.y += Math.sin(this.dir) * step;

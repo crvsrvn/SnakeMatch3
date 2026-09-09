@@ -4,8 +4,15 @@
 
 import * as THREE from 'three';
 
-const SPHERE = new THREE.SphereGeometry(1, 22, 14);
-const CORE = new THREE.SphereGeometry(1, 16, 10);
+// 分段数在 boot 时按配置重建：珠子数量动辄上千，面数是渲染开销里最直接的一项
+let SPHERE = new THREE.SphereGeometry(1, 16, 11);
+let CORE = new THREE.SphereGeometry(1, 12, 8);
+
+export function setBeadSegments(w, h) {
+  SPHERE.dispose(); CORE.dispose();
+  SPHERE = new THREE.SphereGeometry(1, w, h);
+  CORE = new THREE.SphereGeometry(1, Math.max(6, w - 4), Math.max(5, h - 3));
+}
 const matCache = new Map();
 let rainbowTex = null;
 
@@ -130,4 +137,4 @@ export function makeGhostMaterial() {
   });
 }
 
-export const GHOST_GEO = SPHERE;
+export function ghostGeometry() { return SPHERE; }

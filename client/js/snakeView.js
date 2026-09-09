@@ -20,15 +20,45 @@ export class SnakeViews {
 
   colorOf(c) { return c === WILD ? null : this.C.colors[c]; }
 
-  /** @param anchor 相机焦点(游戏坐标) —— 所有渲染坐标都展开到它附近 */
-  sync(snakes, anchor, myId, dt) {
+  /** 某点到相机焦点的环面平方距离 */
+  near2(p, anchor) {
+    const MAP = this.C.map.size;
+    const dx = toroidalDelta(anchor.x, p.x, MAP), dy = toroidalDelta(anchor.y, p.y, MAP);
+    return dx * dx + dy * dy;
+  }
+
+  /** 整条蛇的所有珠子都在可见半径外才算远 —— 只看头会漏掉"头远尾近"的长蛇 */
+  isFar(s, anchor, r2) {
+    const MAP = this.C.map.size;
+    const beads = s.beads.length ? s.beads : (s.deathPos ? [s.deathPos] : null);
+    if (!beads) return true;
+    for (const b of beads) {
+      const dx = toroidalDelta(anchor.x, b.x, MAP);
+      const dy = toroidalDelta(anchor.y, b.y, MAP);
+      if (dx * dx + dy * dy < r2) return false;
+    }
+    return true;
+  }
+
+  /**
+   * @param anchor 相机焦点(游戏坐标) —— 所有渲染坐标都展开到它附近
+   * @param cullRadius 超出这个距离的蛇整条隐藏：three.js 遇到 visible=false 的节点会
+   *                   直接跳过整棵子树，百人同场时这是渲染耗时的大头
+   */
+  sync(snakes, anchor, myId, dt, cullRadius, labelRadius) {
     const seen = new Set();
+    const r2 = cullRadius * cullRadius;
+    const lr2 = labelRadius * labelRadius;
+    let drawn = 0;
     for (const s of snakes) {
       seen.add(s.id);
       let v = this.views.get(s.id);
       if (!v) { v = new SnakeView(this, s); this.views.set(s.id, v); }
-      v.update(s, anchor, s.id === myId, dt);
+      if (s.id !== myId && this.isFar(s, anchor, r2)) { v.hide(); continue; }
+      v.update(s, anchor, s.id === myId, dt, lr2);
+      drawn++;
     }
+    this.drawn = drawn;
     for (const [id, v] of this.views) {
       if (!seen.has(id)) { v.dispose(); this.views.delete(id); }
     }
@@ -69,7 +99,10 @@ class SnakeView {
     this.group.add(this.label);
   }
 
-  update(s, anchor, isSelf, dt) {
+  hide() { this.group.visible = false; }
+
+  update(s, anchor, isSelf, dt, labelR2) {
+    this.group.visible = true;
     const C = this.o.C;
     const MAP = C.map.size;
     const R = C.snake.beadRadius;
@@ -83,7 +116,7 @@ class SnakeView {
         const x = anchor.x + toroidalDelta(anchor.x, s.deathPos.x, MAP);
         const y = anchor.y + toroidalDelta(anchor.y, s.deathPos.y, MAP);
         this.label.position.set(x, 1.6, -y);
-        this.label.visible = true;
+        this.label.visible = isSelf || this.o.near2(s.deathPos, anchor) < labelR2;
       } else {
         this.label.visible = false;
       }
@@ -91,7 +124,7 @@ class SnakeView {
       return;
     }
     this.arrow.visible = true;
-    this.label.visible = true;
+    this.label.visible = isSelf || this.o.near2(s.beads[0], anchor) < labelR2;
 
     // 沿链条展开：第 0 颗对齐到相机焦点附近，其余相对前一颗取环面最短路
     let px = anchor.x + toroidalDelta(anchor.x, s.beads[0].x, MAP);

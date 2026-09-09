@@ -5,9 +5,11 @@
   "type": "module",
   "description": "俯视角局域网多人贪吃蛇三消对战（three.js + Node 权威服务器）",
   "scripts": {
-    "start": "node server/index.js",
+    "start": "node scripts/start.js",
     "dev": "node --watch server/index.js",
-    "test": "node tests/match3.js && node tests/sim.js && node tests/interp.js"
+    "test": "node tests/match3.js && node tests/sim.js && node tests/interp.js",
+    "start:plain": "node scripts/start.js --plain",
+    "stress": "node tests/stress.js"
   },
   "dependencies": {
     "express": "^4.21.2",

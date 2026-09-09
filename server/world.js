@@ -51,6 +51,40 @@ export class World {
     return s;
   }
 
+  /** 场上（含 AI）是否已经有人叫这个名字 */
+  isNameTaken(name) {
+    for (const s of this.snakes.values()) if (s.name === name) return true;
+    return false;
+  }
+
+  /** 当前在场的全部昵称，登录界面用来提前提示占用 */
+  takenNames() {
+    return [...this.snakes.values()].map((s) => s.name);
+  }
+
+  /** 在原昵称后接数字凑一个没被占用的，长度仍受 12 字限制 */
+  freeVariant(name) {
+    const base = name.replace(/\d+$/, '') || name;
+    for (let i = 2; i < 1000; i++) {
+      const suffix = String(i);
+      const c = base.slice(0, Math.max(1, 12 - suffix.length)) + suffix;
+      if (!this.isNameTaken(c)) return c;
+    }
+    return this.freeDefaultName();
+  }
+
+  /** 没填昵称时用的默认名：贪吃蛇1号、贪吃蛇2号…（跳过场上已占用的编号） */
+  freeDefaultName() {
+    const used = new Set();
+    for (const s of this.snakes.values()) {
+      const m = /^贪吃蛇(\d+)号$/.exec(s.name);
+      if (m) used.add(Number(m[1]));
+    }
+    let n = 1;
+    while (used.has(n)) n++;
+    return `贪吃蛇${n}号`;
+  }
+
   removeSnake(id) {
     this.snakes.delete(id);
     this.brains.delete(id);
@@ -283,27 +317,16 @@ export class World {
   kill(s, byName) {
     if (s.deadUntil) return;
     const head = s.beads[0] || { x: s.x, y: s.y, z: 0 };
-    const drops = this.dropBeads(s);
+    // 珠子随蛇一起消失，不留在场上；这份坐标只给客户端放炸开特效用
+    const beads = s.beads.map((b, i) => [r2(b.x), r2(b.y), r2(b.z), s.colors[i]]);
     s.deathPos = { x: wrap(head.x, MAP), y: wrap(head.y, MAP) };
     s.deadUntil = this.time + S.deathPauseSec;
     s.colors = [];
     s.beads = [];
     this.events.push({
       t: EV.DEATH, id: s.id, name: s.name, by: byName,
-      p: [r2(s.deathPos.x), r2(s.deathPos.y), 0], drops,
+      p: [r2(s.deathPos.x), r2(s.deathPos.y), 0], beads,
     });
-  }
-
-  /** 死亡时珠子原地留下，和普通道具进同一个池子，谁都能捡 */
-  dropBeads(s) {
-    const drops = [];
-    for (let i = 0; i < s.beads.length; i++) {
-      if (this.items.length >= CONFIG.items.maxOnMap) break;
-      const b = s.beads[i];
-      this.items.push({ id: this.nextItemId++, x: b.x, y: b.y, c: s.colors[i] });
-      drops.push([r2(b.x), r2(b.y), r2(b.z), s.colors[i]]);
-    }
-    return drops;
   }
 
   respawnDead() {

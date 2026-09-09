@@ -3,7 +3,7 @@
 // 用叠加混合下"颜色乘以剩余寿命"来做淡出，避免为此写自定义 shader。
 
 import * as THREE from 'three';
-import { GHOST_GEO, makeGhostMaterial } from './skins.js';
+import { ghostGeometry, makeGhostMaterial } from './skins.js';
 
 const MAX_P = 900;
 const MAX_RING = 16;
@@ -50,7 +50,7 @@ export class Effects {
     // 三消虚拟珠：被消掉的珠子先原地闪几下再消失，让玩家看清是哪几颗
     this.ghosts = [];
     for (let i = 0; i < MAX_GHOST; i++) {
-      const m = new THREE.Mesh(GHOST_GEO, makeGhostMaterial());
+      const m = new THREE.Mesh(ghostGeometry(), makeGhostMaterial());
       m.visible = false;
       scene.add(m);
       this.ghosts.push({ mesh: m, t: -1, y0: 0 });

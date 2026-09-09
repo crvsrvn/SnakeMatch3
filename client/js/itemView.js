@@ -27,28 +27,31 @@ export class ItemViews {
 
   matFor(c) { return c === WILD ? this.wildMat : this.mats[c]; }
 
-  sync(items, anchor, dt) {
+  sync(items, anchor, dt, cullRadius) {
     const MAP = this.C.map.size;
+    const r2 = cullRadius * cullRadius;
     this.time += dt;
+    let n = 0;
     for (let i = 0; i < items.length; i++) {
       const [, ix, iy, ci] = items[i];
+      const ddx = toroidalDelta(anchor.x, ix, MAP), ddy = toroidalDelta(anchor.y, iy, MAP);
+      if (ddx * ddx + ddy * ddy > r2) continue;      // 视野外的道具不进渲染队列
       const wild = ci === WILD;
-      let m = this.pool[i];
+      let m = this.pool[n];
       if (!m) {
         m = new THREE.Mesh(this.geo, this.mats[0]);
         m.castShadow = this.C.graphics.shadows;
         this.scene.add(m);
-        this.pool[i] = m;
+        this.pool[n] = m;
       }
       if (m.geometry !== (wild ? this.wildGeo : this.geo)) m.geometry = wild ? this.wildGeo : this.geo;
       m.material = this.matFor(ci);
       m.visible = true;
-      const x = anchor.x + toroidalDelta(anchor.x, ix, MAP);
-      const y = anchor.y + toroidalDelta(anchor.y, iy, MAP);
       const spin = wild ? 2.2 : 0.6;
-      m.position.set(x, Math.sin(this.time * 2 + i) * (wild ? 0.3 : 0.16) + (wild ? 0.35 : 0.1), -y);
+      m.position.set(anchor.x + ddx, Math.sin(this.time * 2 + i) * (wild ? 0.3 : 0.16) + (wild ? 0.35 : 0.1), -(anchor.y + ddy));
       m.rotation.set(this.time * spin + i, this.time * spin * 1.4 + i, 0);
+      n++;
     }
-    for (let i = items.length; i < this.pool.length; i++) this.pool[i].visible = false;
+    for (let i = n; i < this.pool.length; i++) this.pool[i].visible = false;
   }
 }

@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { Net } from './net.js';
 import { createScene } from './scene.js';
 import { SnakeViews } from './snakeView.js';
+import { setBeadSegments } from './skins.js';
 import { ItemViews } from './itemView.js';
 import { Effects } from './effects.js';
 import { Minimap } from './minimap.js';
@@ -26,11 +27,14 @@ const ui = {
   history: document.getElementById('nickHistory'),
   skins: document.getElementById('skinList'),
   play: document.getElementById('playBtn'),
+  hint: document.getElementById('nickHint'),
   foot: document.getElementById('loginFoot'),
 };
+let takenNames = new Set();
+let welcomed = false;
 let chosenSkin = localStorage.getItem('sm3.skin') || 'glass';
 
-const net = new Net({ onWelcome, onJoined, onEvents, onClose, onError });
+const net = new Net({ onWelcome, onJoined, onReject, onEvents, onClose, onError });
 net.connect();
 
 const input = new Input(
@@ -49,12 +53,20 @@ function onWelcome(m) {
   camDist = CONFIG.camera.distance;
   if (!CONFIG.skins.includes(chosenSkin)) chosenSkin = CONFIG.defaultSkin;
 
+  takenNames = new Set(m.taken || []);
   const history = m.nicknames || [];
-  ui.nick.value = localStorage.getItem('sm3.nick') || history[0] || '';
-  ui.history.innerHTML = history
-    .map((n) => `<span class="nickChip" data-nick="${escapeAttr(n)}">${escapeHtml(n)}</span>`).join('');
+  const preferred = [localStorage.getItem('sm3.nick'), ...history]
+    .find((n) => n && !takenNames.has(n));
+  ui.nick.value = preferred || m.defaultNickname || '';
+  ui.history.innerHTML = history.map((n) => {
+    const t = takenNames.has(n) ? ' taken' : '';
+    return `<span class="nickChip${t}" data-nick="${escapeAttr(n)}"`
+      + `${t ? ' title="当前有人在用"' : ''}>${escapeHtml(n)}</span>`;
+  }).join('');
   ui.history.querySelectorAll('.nickChip').forEach((b) => b.addEventListener('click', () => {
+    if (b.classList.contains('taken')) return;
     ui.nick.value = b.dataset.nick;
+    checkNickname();
   }));
 
   ui.skins.innerHTML = CONFIG.skins.map((s) => `
@@ -66,12 +78,38 @@ function onWelcome(m) {
     ui.skins.querySelectorAll('.skinBtn').forEach((x) => x.classList.toggle('on', x === b));
   }));
 
-  ui.play.disabled = false;
+  welcomed = true;
   ui.play.textContent = '进入战场';
   ui.foot.textContent = `你的地址 ${m.ip} · 同一地址可以开多个网页、用不同昵称各玩各的`;
+  checkNickname();
+}
+
+/** 昵称占用的即时提示。服务器在 JOIN 时还会再判一次，这里只是提前告诉玩家 */
+function checkNickname() {
+  const v = ui.nick.value.trim();
+  const taken = v !== '' && takenNames.has(v);
+  ui.hint.classList.toggle('bad', taken);
+  ui.hint.classList.toggle('ok', !taken && v !== '');
+  ui.hint.textContent = taken ? `「${v}」已经有人在用，换一个吧`
+    : (v === '' ? '留空则自动分配一个名字' : '');
+  ui.play.disabled = taken || !welcomed;
+  return !taken;
+}
+ui.nick.addEventListener('input', checkNickname);
+
+function onReject(m) {
+  takenNames = new Set(m.taken || [...takenNames, ui.nick.value.trim()]);
+  ui.nick.value = m.suggestion || '';
+  ui.play.disabled = false;
+  ui.play.textContent = '进入战场';
+  checkNickname();
+  ui.hint.classList.remove('ok');
+  ui.hint.classList.add('bad');
+  ui.hint.textContent = `${m.reason}${m.suggestion ? `，已替你改成「${m.suggestion}」` : ''}`;
 }
 
 ui.play.addEventListener('click', () => {
+  if (!checkNickname()) return;
   const nick = ui.nick.value.trim();
   localStorage.setItem('sm3.nick', nick);
   localStorage.setItem('sm3.skin', chosenSkin);
@@ -94,6 +132,7 @@ function onJoined(m) {
 
 function onClose() {
   input.enabled = false;
+  welcomed = false;
   ui.login.classList.remove('gone');
   ui.play.disabled = true;
   ui.play.textContent = '连接已断开';
@@ -104,12 +143,14 @@ function onError() { ui.foot.textContent = '无法连接服务器，请确认本
 // ---------------- 场景与主循环 ----------------
 
 function boot() {
+  setBeadSegments(...CONFIG.graphics.beadSegments);
   gfx = createScene(CONFIG);
   views = new SnakeViews(gfx.scene, CONFIG, gfx.CSS2DObject);
   itemViews = new ItemViews(gfx.scene, CONFIG);
   fx = new Effects(gfx.scene, CONFIG);
   hud = new Hud(CONFIG);
   minimap = new Minimap(document.getElementById('minimap'), CONFIG);
+  frameInterval = 1000 / Math.max(15, CONFIG.graphics.maxFps);
 
   addEventListener('wheel', (e) => {
     camDist = clamp(camDist + Math.sign(e.deltaY) * 2.5, CONFIG.camera.minDistance, CONFIG.camera.maxDistance);
@@ -119,10 +160,17 @@ function boot() {
 }
 
 let last = performance.now();
-let fpsAcc = 0, fpsN = 0;
+let fpsAcc = 0, fpsN = 0, workAcc = 0;
+let nextDue = 0, frameInterval = 1000 / 60;
 
 function frame(now) {
   requestAnimationFrame(frame);
+  // 帧率上限：按固定节拍判定而不是"距上一帧够久了吗"，
+  // 后者在 144Hz 屏上会退化成 48fps（两帧不够、三帧才够）。
+  if (now < nextDue) return;
+  nextDue = nextDue + frameInterval <= now ? now + frameInterval : nextDue + frameInterval;
+
+  const workStart = now;
   const dt = Math.min((now - last) / 1000, 0.1);
   last = now;
 
@@ -136,9 +184,10 @@ function frame(now) {
       hud.setSelf(me);
       hud.setDeath(me.dead ? me.dead : null, myKiller);
     }
-    views.sync(st.snakes, anchor, myId, dt);
-    itemViews.sync(st.items, anchor, dt);
-    hud.setBoard(st.snakes, myId);
+    const cullRadius = camDist * 1.5 + CONFIG.graphics.cullMargin;
+    views.sync(st.snakes, anchor, myId, dt, cullRadius, CONFIG.graphics.labelRadius);
+    itemViews.sync(st.items, anchor, dt, cullRadius);
+    hud.setBoard(st.snakes, myId, dt);
     minimap.draw(st.snakes, st.items, myId, myDeath, dt);
   }
 
@@ -149,9 +198,10 @@ function frame(now) {
   gfx.labelRenderer.render(gfx.scene, gfx.camera);
 
   fpsAcc += dt; fpsN++;
+  workAcc += performance.now() - workStart;
   if (fpsAcc >= 0.5) {
-    hud.setStatus(Math.round(fpsN / fpsAcc), net.ping);
-    fpsAcc = 0; fpsN = 0;
+    hud.setStatus(Math.round(fpsN / fpsAcc), (workAcc / fpsN).toFixed(1), net.ping);
+    fpsAcc = 0; fpsN = 0; workAcc = 0;
   }
 }
 
@@ -235,17 +285,17 @@ function onEvents(evs) {
         break;
       }
       case EV.DEATH: {
-        const drops = e.drops || [];
-        for (const d of drops) fx.burst(toRender(d, tmp), fxColor(d[3]), 12, 5, 0.5);
-        if (drops.length) fx.ring(toRender(drops[0], tmp), 0xff6a7d, 8, 0.5);
+        const beads = e.beads || [];
+        for (const d of beads) fx.burst(toRender(d, tmp), fxColor(d[3]), 10, 6, 0.5);
+        fx.ring(toRender(e.p, tmp), 0xff6a7d, 8, 0.5);
         if (e.id === myId) {
           A.sfxDie();
           myDeath = { x: e.p[0], y: e.p[1] };
           myKiller = e.by;
           markerUntil = Infinity;                 // 停顿期间一直显示，重生时改成有限时长
-          hud.toast(`你被 ${e.by} 撞掉了，珠子散落原地`, 'bad');
+          hud.toast(`你被 ${e.by} 撞掉了`, 'bad');
         } else {
-          hud.toast(`${e.name} 被 ${e.by} 淘汰，散落 ${drops.length} 颗珠子`);
+          hud.toast(`${e.name} 被 ${e.by} 淘汰`);
         }
         break;
       }

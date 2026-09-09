@@ -7,8 +7,9 @@ export const C2S = {
 };
 
 export const S2C = {
-  WELCOME: 'welcome', // { config, skinLabels, nicknames:[], ip }
+  WELCOME: 'welcome', // { config, skinLabels, nicknames:[], taken:[], defaultNickname, ip }
   JOINED: 'joined',   // { id, nickname, skin, trophies }
+  REJECT: 'reject',   // { reason, suggestion } 昵称被占用等，入场被拒
   STATE: 'state',     // { f:[帧,...], ev:[] } —— 一个包携带多帧位置，客户端只做内插
   PONG: 'pong',       // { c }
 };
@@ -22,7 +23,7 @@ export const EV = {
   MATCH: 'match',   // { pts:[[x,y,z]..], c, sid }
   HITBODY: 'hit',   // { p:[x,y,z] }
   HITHEAD: 'clash', // { p:[x,y,z] }
-  DEATH: 'death',   // { id, name, by, p:[x,y,z], drops:[[x,y,z,c]..] }
+  DEATH: 'death',   // { id, name, by, p:[x,y,z], beads:[[x,y,z,c]..] 仅用于炸开特效，不留在场上 }
   RESPAWN: 'spawn', // { id, p:[x,y] }
   WIN: 'win',       // { id, name, trophies }
   WILD: 'wild',     // { p:[x,y] } 万能珠簇刷新

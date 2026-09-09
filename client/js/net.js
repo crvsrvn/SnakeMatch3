@@ -50,6 +50,9 @@ export class Net {
         this.h.onWelcome?.(m);
         break;
       }
+      case S2C.REJECT:
+        this.h.onReject?.(m);
+        break;
       case S2C.JOINED:
         this.myId = m.id;
         this.h.onJoined?.(m);
