@@ -11,9 +11,17 @@ npm install
 npm start
 ```
 
-`npm start` 会先把当前的 `node.exe` 链接/复制成 `.run/SnakeMatch3_Server.exe` 再用它启动，
-这样服务器在 Windows 任务管理器里就叫 **SnakeMatch3_Server**（而不是一堆 node.exe 里认不出是哪个）。
-不需要这层包装时用 `npm run start:plain`。
+`npm start` 会先复制一份 `node.exe` 成 `.run/SnakeMatch3_Server.exe`，用 `rcedit` 改写它的
+**PE 版本资源与图标**，再用它启动。任务管理器有两处名字、来源不同，两处都得改：
+
+| 显示位置 | 取自 | 结果 |
+|---|---|---|
+| 详细信息页 / `Get-Process` | 文件名 | `SnakeMatch3_Server` |
+| 进程页 | 版本资源里的 `FileDescription` | `SnakeMatch3 Server` |
+
+（这是 Electron 把 `electron.exe` 变成自家应用名的同一套做法。只改文件名的话，
+进程页仍然显示 "Node.js JavaScript Runtime"。）
+只在 Node 版本变化时重做一次；不需要这层包装时用 `npm run start:plain`。
 
 启动后终端会打印本机与局域网地址，同一网络下的任何设备打开即可加入：
 
@@ -79,7 +87,16 @@ graphics.shadows      阴影开关（性能不足时关掉）
 
 ## 皮肤
 
-`玻璃珠`（半透外壳 + 内芯猫眼）、`哑光陶土`、`抛光金属`、`霓虹发光`、`糖果釉面`，进场前选择。万能珠在任何皮肤下都是彩虹色。
+8 种，进场前选择，万能珠在任何皮肤下都是彩虹色：
+
+| 皮肤 | 做法 |
+|---|---|
+| 玻璃珠 | 半透外壳 + 一枚压扁的内芯，模仿真弹珠里的"猫眼" |
+| 哑光陶土 / 抛光金属 / 糖果釉面 | 纯 PBR 参数（粗糙度、金属度、清漆、绒感）|
+| 霓虹发光 | 本体压暗 + 自发光拉满 |
+| **极光虹彩** | `iridescence` 薄膜干涉，颜色随视角在虹彩间滑动 |
+| **深空星河** | 程序生成的星点/星云贴图做自发光，珠子缓慢自转 |
+| **熔岩裂纹** | 程序生成的分叉裂纹贴图，裂纹按珠子本色发光 |
 
 ## 测试
 
@@ -99,7 +116,7 @@ npm run stress      # 100 条 AI 的服务器压测（可加参数：node tests/
 
 ```
 config/    game.config.js —— 所有可调参数
-scripts/   start.js —— 启动器，让进程在任务管理器里叫 SnakeMatch3_Server
+scripts/   start.js / serverExe.js —— 启动器，把进程改名并打上版本资源与图标
 database/  players.json   —— 昵称与奖杯（运行时生成）
 shared/    协议、环面数学（服务端与浏览器共用）
 server/    world 权威模拟 / snake 轨迹模型 / match3 / ai / profiles
@@ -108,4 +125,5 @@ docs/      设计文档与 PlantUML 图
 tests/     无头回归测试
 ```
 
-实现细节与设计取舍见 [`docs/design.md`](docs/design.md)。
+- 实现细节与设计取舍：[`docs/design.md`](docs/design.md)
+- 双端通信协议详解、以及扩展到公网的完整方案：[`docs/networking.md`](docs/networking.md)

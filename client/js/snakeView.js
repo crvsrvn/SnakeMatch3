@@ -4,7 +4,7 @@
 // 死亡停顿中的蛇没有珠子，只保留一个名牌挂在死亡点上。
 
 import * as THREE from 'three';
-import { makeBead, retintBead } from './skins.js';
+import { makeBead, retintBead, SPINNING_SKINS } from './skins.js';
 import { toroidalDelta } from '/shared/mathUtil.js';
 import { WILD } from '/shared/protocol.js';
 
@@ -147,7 +147,8 @@ class SnakeView {
       }
       m.position.set(px, s.beads[i].z, -py);
       m.scale.setScalar(i === 0 ? R * 1.18 : R);
-      if (this.skin === 'glass' || colorHex === null) m.rotation.y += dt * (colorHex === null ? 1.8 : 0.7);
+      if (colorHex === null) m.rotation.y += dt * 1.8;                 // 万能珠转得快，好认
+      else if (SPINNING_SKINS.has(this.skin)) m.rotation.y += dt * 0.7;
       if (i === 0) this.headPos.copy(m.position);
     }
     for (let i = n; i < this.meshes.length; i++) this.meshes[i].visible = false;

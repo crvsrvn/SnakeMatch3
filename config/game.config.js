@@ -91,7 +91,7 @@ export const CONFIG = {
     fogDensity: 0.009,
   },
 
-  skins: ['glass', 'matte', 'metal', 'neon', 'candy'],
+  skins: ['glass', 'matte', 'metal', 'neon', 'candy', 'aurora', 'galaxy', 'magma'],
   defaultSkin: 'glass',
 
   profiles: {
@@ -105,6 +105,9 @@ export const SKIN_LABELS = {
   metal: '抛光金属',
   neon: '霓虹发光',
   candy: '糖果釉面',
+  aurora: '极光虹彩',
+  galaxy: '深空星河',
+  magma: '熔岩裂纹',
 };
 
 // 压测用的临时覆盖，正常游玩不需要：SM3_AI=100 SM3_MAP=380 npm start

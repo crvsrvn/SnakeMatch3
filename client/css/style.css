@@ -65,7 +65,16 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
   display:inline-block;min-width:1.4em;text-align:right;font-variant-numeric:tabular-nums}
 #board{max-height:calc(100vh - 40px);overflow:hidden}
 
-#hint{left:16px;bottom:14px;font-size:12px;color:var(--dim);line-height:1.7;max-width:min(60vw,540px)}
+#corner{left:16px;bottom:14px;display:flex;flex-direction:column;gap:8px;
+  max-width:min(62vw,560px)}
+#rules{padding:9px 12px;border-radius:12px;font-size:12px;line-height:1.85;
+  background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(8px)}
+#rules .rHead{font-size:10px;letter-spacing:.16em;color:var(--dim);margin-bottom:2px}
+#rules b{color:var(--accent);font-weight:600}
+#rules i{font-style:normal;font-weight:600;
+  background:linear-gradient(90deg,#ff4d5a,#ffd23f,#4ce07a,#43a8ff,#b06bff);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+#hint{font-size:12px;color:var(--dim);line-height:1.7;padding-left:2px}
 #hint b{color:var(--ink)}
 
 #toasts{left:50%;top:64px;transform:translateX(-50%);display:flex;flex-direction:column;
@@ -131,6 +140,16 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 .skinBtn .dot.metal{background:linear-gradient(150deg,#fdfdff 0%,#9aa6bd 35%,#454f68 60%,#20263a 100%)}
 .skinBtn .dot.neon{background:radial-gradient(circle at 50% 50%,#b6ffe6,#18e0a0 45%,#046 100%);box-shadow:0 0 12px #18e0a0}
 .skinBtn .dot.candy{background:radial-gradient(circle at 30% 26%,#fff 4%,#ff8fb0 35%,#d1305e 100%)}
+.skinBtn .dot.aurora{background:conic-gradient(from 210deg,#7af5ff,#a67bff,#ff7ad1,#ffe97a,#7affc4,#7af5ff);
+  box-shadow:inset -3px -4px 8px rgba(0,0,0,.45),0 0 10px rgba(160,140,255,.65)}
+.skinBtn .dot.galaxy{background:radial-gradient(circle at 62% 34%,#fff 1px,transparent 2px),
+  radial-gradient(circle at 30% 62%,#fff 1px,transparent 2px),
+  radial-gradient(circle at 46% 20%,#fff 1px,transparent 2px),
+  radial-gradient(circle at 26% 30%,rgba(150,120,255,.9),transparent 60%),
+  radial-gradient(circle at 70% 70%,rgba(60,180,255,.8),transparent 60%),#0a0a1c;
+  box-shadow:0 0 10px rgba(120,110,255,.6)}
+.skinBtn .dot.magma{background:radial-gradient(circle at 35% 30%,#fff2a8 2%,#ff8a1f 18%,#c22a12 45%,#1a0e0c 100%);
+  box-shadow:0 0 12px rgba(255,120,30,.75)}
 #playBtn{width:100%;padding:12px;font-size:15px;font-weight:700;color:#04121c;
   background:linear-gradient(90deg,#5ad2ff,#78ffd0);border:0;border-radius:11px;cursor:pointer}
 #playBtn:disabled{opacity:.45;cursor:default}
