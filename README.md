@@ -27,8 +27,8 @@ The command-line equivalents:
 
 ```bash
 npm start                    # server only
-node scripts/run.js client   # browser only
-node scripts/run.js both     # server, then browser
+node run/run.js client   # browser only
+node run/run.js both     # server, then browser
 npm test                     # regression tests
 npm run stress               # server load test
 ```
@@ -41,9 +41,28 @@ LAN:   http://192.168.x.x:3000
 ```
 
 No sign-up: type a nickname and you are in (leave it blank and you get `Snake 1`, `Snake 2`, …).
-**Nicknames are unique while you are on the field**, and the login screen warns before you press the button.
-Trophies are recorded per `IP + nickname`, so **several tabs from one address, under different nicknames,
-are several independent players** who can play at the same time and keep separate trophy counts.
+**One address, one profile, one nickname**: trophies and every record belong to the address, nicknames are
+unique server-wide, and the login screen warns before you press the button. You may **rename once**
+(then it locks) without losing anything; one address can only have one snake on the field at a time.
+
+## What keeps you coming back
+
+The login screen shows your **record card**: overall rank, this week's trophies, best streak, how far the
+next unlock is, who overtook you while you were away and who kills you the most. In the arena:
+
+| Mechanic | What it does |
+|---|---|
+| 👑 Crown | The player with the most trophies in the room wears a crown (ties go to whoever got there last). Killing the crown holder is **regicide**: trophy +1 |
+| 🔥 Streak | Wins without dying in between show on the name tag; death resets it, and ending someone's streak is announced to the room |
+| Near-win alert | A snake down to 3 beads is announced, lit by a beacon and blinks red on the minimap |
+| ⚔ Revenge | Whoever killed you is marked red on the name tag and minimap for 60 s; get them back for a trophy |
+| Room events | Every 5 minutes, announced 30 s ahead: **rainbow shower** (wild beads spawn like mad), **double trophies**, **brawl** (everyone cut to 10 beads) |
+| Daily tasks | Eat 30 beads / sever 2 tails / one chain, each worth a trophy; the first win of the day pays an extra one |
+| Weekly board | Trophies are also counted per week; last week's top three wear 🥇🥈🥉 for a week, and the login screen keeps a hall of fame |
+| Milestones | 10 / 20 / 30 / 50 trophies unlock a tail trail, a golden name tag, a bigger death burst and a spawn halo |
+| Achievements & titles | Dead heat, rainbow match, triple chain, grafting 20 beads at once, 5-win streak, regicide ×3 … each one unlocks a title you can wear on the name tag |
+
+Every threshold lives in the `retention` section of `config/game.config.js`.
 
 To let people outside your LAN in, see [`docs/networking.md`](docs/networking.md).
 
@@ -84,7 +103,7 @@ Eight bead skins to pick from before you enter: glass marble, matte clay, polish
 | Transport | **WebSocket / JSON** | A LAN has bandwidth to spare; readability beats compression here |
 | Build | **No build step** | Native ES modules plus an import map: edit, reload, done. No bundler |
 | Config | **One shared file** | Server and client both read `config/game.config.js`; the client receives it on connect |
-| Persistence | **A JSON file** | Only nicknames and trophies, written atomically on every change. Not worth a database |
+| Persistence | **A JSON file** | One record per address (nickname, trophies, weekly, daily, achievements, nemeses); trophies are written atomically at once, counters are coalesced into a write every 2 s. Not worth a database |
 | Tests | **Plain Node, headless** | Rules, simulation and interpolation, with no test framework |
 
 ## More

@@ -5,22 +5,21 @@ import { randRange, toroidalDelta } from '../shared/mathUtil.js';
 
 const A = CONFIG.ai;
 const S = CONFIG.snake;
-const MAP = CONFIG.map.size;
 
 export class AIBrain {
   constructor() { this.timer = randRange(A.turnIntervalMin, A.turnIntervalMax); }
 
-  update(snake, dt) {
+  update(snake, dt, mapSize) {
     this.timer -= dt;
     if (this.timer <= 0) {
       this.timer = randRange(A.turnIntervalMin, A.turnIntervalMax);
       snake.targetDir = snake.dir + randRange(-A.maxTurnDelta, A.maxTurnDelta);
     }
-    this.avoidSelf(snake);
+    this.avoidSelf(snake, mapSize);
   }
 
   /** If the point lookAhead units ahead lands on our own body, turn hard to the emptier side */
-  avoidSelf(snake) {
+  avoidSelf(snake, mapSize) {
     const beads = snake.beads;
     if (beads.length <= S.selfCollisionMinIndex) return;
     const hitR = S.beadRadius * 2;
@@ -29,8 +28,8 @@ export class AIBrain {
       const py = beads[0].y + Math.sin(angle) * A.lookAhead;
       let worst = Infinity;
       for (let i = S.selfCollisionMinIndex; i < beads.length; i++) {
-        const dx = toroidalDelta(px, beads[i].x, MAP);
-        const dy = toroidalDelta(py, beads[i].y, MAP);
+        const dx = toroidalDelta(px, beads[i].x, mapSize);
+        const dy = toroidalDelta(py, beads[i].y, mapSize);
         worst = Math.min(worst, Math.hypot(dx, dy));
       }
       return worst;

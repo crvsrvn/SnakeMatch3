@@ -4,6 +4,10 @@
 //   client  open the browser only (errors out if the server is down, rather than opening a
 //           page that cannot connect)
 //   both    start the server, wait until it actually answers, then open the browser
+//   address print the URLs clients should use (local + LAN), copy the LAN one to the
+//           clipboard (console text is awkward to select by hand), and say if the server is up
+//   reload  ask the running server to re-read config/game.config.js and database/db.json
+//           (POST /admin/reload, loopback only) and print what changed
 
 import net from 'node:net';
 import os from 'node:os';
@@ -11,14 +15,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { CONFIG } from '../config/game.config.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 // Windows 上 import() 不接受盘符路径，必须给 file:// URL
 const ENTRY = pathToFileURL(path.join(ROOT, 'server', 'index.js')).href;
-const PORT = CONFIG.net.port;
-const LOCAL_URL = `http://localhost:${PORT}`;
+// The config is imported dynamically so that `reload` still reaches the server when the
+// admin has just broken the file (the server keeps its old values and reports the error).
 const mode = process.argv[2] || 'both';
+const PORT = await import('../config/game.config.js').then((m) => m.CONFIG.net.port, (e) => {
+  if (mode !== 'reload') fail('config/game.config.js does not load:', `  ${e.message}`);
+  console.log(`[run] config/game.config.js does not load (${e.message}), assuming port 3000`);
+  return 3000;
+});
+const LOCAL_URL = `http://localhost:${PORT}`;
 
 if (!fs.existsSync(path.join(ROOT, 'node_modules', 'express'))) {
   fail('Dependencies are not installed.', 'Run this once in the project root:  npm install');
@@ -27,6 +36,24 @@ if (!fs.existsSync(path.join(ROOT, 'node_modules', 'express'))) {
 if (mode === 'server') {
   await requireFreePort();
   await import(ENTRY);
+} else if (mode === 'address') {
+  const up = await portInUse(PORT);
+  console.log(up ? '[run] server is running' : '[run] server is NOT running (start it with run/1-start-server.cmd)');
+  printAddresses();
+  copyToClipboard(`http://${lanAddresses()[0] || 'localhost'}:${PORT}`);
+} else if (mode === 'reload') {
+  if (!(await portInUse(PORT))) {
+    fail(`The server is not running (nothing answers on port ${PORT}).`,
+      'Nothing to reload: the next start reads the files fresh anyway.');
+  }
+  const r = await (await fetch(`http://127.0.0.1:${PORT}/admin/reload`, { method: 'POST' })).json();
+  console.log('');
+  if (r.config.error) console.log(`  config: FAILED, old values kept -> ${r.config.error}`);
+  else console.log(`  config: ${r.config.changed.length ? 'changed ' + r.config.changed.join(', ') : 'unchanged'}`);
+  if (r.config.needsRestart?.length) console.log(`          "${r.config.needsRestart.join(', ')}" only takes effect after a restart`);
+  if (r.db.error) console.log(`  db:     FAILED, old data kept -> ${r.db.error}`);
+  else console.log(`  db:     ${r.db.records} player record(s) loaded`);
+  console.log('  clients: live values applied; scene-setup values (shadows, bloom, bead segments) need a page reload');
 } else if (mode === 'client') {
   if (!(await portInUse(PORT))) {
     fail(`The server is not running (nothing answers on port ${PORT}).`,
@@ -106,6 +133,19 @@ function openBrowser(url) {
     console.log(`[run] opened ${url} in the default browser`);
   } catch {
     console.log(`[run] could not open a browser, please visit ${url} manually`);
+  }
+}
+
+function copyToClipboard(text) {
+  const [cmd, args] = process.platform === 'win32' ? ['clip', []]
+    : process.platform === 'darwin' ? ['pbcopy', []] : ['xclip', ['-selection', 'clipboard']];
+  try {
+    const p = spawn(cmd, args, { stdio: ['pipe', 'ignore', 'ignore'] });
+    p.on('error', () => console.log('[run] clipboard not available'));
+    p.on('exit', (code) => { if (code === 0) console.log(`[run] copied to clipboard: ${text}`); });
+    p.stdin.end(text);
+  } catch {
+    console.log('[run] clipboard not available');
   }
 }
 

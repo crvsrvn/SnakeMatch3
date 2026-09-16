@@ -8,8 +8,13 @@
 import * as THREE from 'three';
 import { makeBead, retintBead, SPINNING_SKINS, FLOW_SKINS, flowPhase } from './skins.js';
 import { Aura } from './aura.js';
+import { MEDALS } from './hud.js';
+import { milestones } from './progress.js';
+import { t } from './i18n.js';
 import { toroidalDelta } from '/shared/mathUtil.js';
 import { WILD } from '/shared/protocol.js';
+
+const TRAIL_EVERY = 0.12;                         // seconds between tail particle puffs (milestone cosmetic)
 
 export class SnakeViews {
   constructor(scene, CONFIG, CSS2DObject) {
@@ -21,11 +26,35 @@ export class SnakeViews {
     this.arrowGeo = new THREE.ConeGeometry(0.3, 0.9, 3).rotateZ(-Math.PI / 2);
     this.bubbleGeo = new THREE.SphereGeometry(1, 20, 12);
     this.shieldRingGeo = new THREE.TorusGeometry(1, 0.045, 6, 36);
+    // Crown for the room's top player, beacon for a snake about to clear: shared geometry,
+    // meshes built per view only when first needed
+    this.crownBandGeo = new THREE.TorusGeometry(1, 0.16, 8, 24);
+    this.crownSpikeGeo = new THREE.ConeGeometry(0.22, 0.8, 4);
+    this.crownMat = new THREE.MeshStandardMaterial({
+      color: 0xffd45e, emissive: 0xffb01e, emissiveIntensity: 0.9, metalness: 0.8, roughness: 0.3,
+    });
+    this.beaconGeo = new THREE.CylinderGeometry(0.5, 0.5, 9, 16, 1, true);
+    this.beaconMat = new THREE.MeshBasicMaterial({
+      color: 0xffd45e, transparent: true, opacity: 0.22, side: THREE.DoubleSide,
+      depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+    this.onTrail = null;                          // (position, colorHex) => void, set by main to spawn particles
   }
 
-  /** A snake just grafted a tail: run a scan wave over the first n beads of its head */
-  flash(id, n) {
-    if (n > 0) this.views.get(id)?.startFlash(n);
+  /**
+   * A snake just gained beads at its head: run a scan wave over the first n of them.
+   * @param opts { dur: seconds, scale: peak size of the crest bead (1 = no bulge),
+   *   color: crest orb tint, orb: crest orb radius in bead radii at the start (it grows to
+   *   ~1.9x that; 0 = no orb), orbOpacity: its peak opacity }
+   */
+  flash(id, n, opts) {
+    if (n > 0) this.views.get(id)?.startFlash(n, opts);
+  }
+
+  /** The view of a snake whose head is drawn this frame (headPos, dir), or null */
+  headOf(id) {
+    const v = this.views.get(id);
+    return v && v.group.visible && v.arrow.visible ? v : null;
   }
 
   colorOf(c) { return c === WILD ? null : this.C.colors[c]; }
@@ -62,13 +91,14 @@ export class SnakeViews {
     const seen = new Set();
     const r2 = cullRadius * cullRadius;
     const lr2 = labelRadius * labelRadius;
+    const nemesis = snakes.find((s) => s.id === myId)?.nemesis ?? null;   // who killed me lately
     let drawn = 0;
     for (const s of snakes) {
       seen.add(s.id);
       let v = this.views.get(s.id);
       if (!v) { v = new SnakeView(this, s); this.views.set(s.id, v); }
       if (s.id !== myId && this.isFar(s, anchor, r2)) { v.hide(); continue; }
-      v.update(s, anchor, s.id === myId, dt, lr2);
+      v.update(s, anchor, s.id === myId, dt, lr2, s.id === nemesis);
       drawn++;
     }
     this.drawn = drawn;
@@ -87,6 +117,7 @@ class SnakeView {
     this.meshes = [];
     this.skin = data.skin;
     this.headPos = new THREE.Vector3();
+    this.dir = 0;                                 // heading as last drawn; effects ride on it
 
     const arrowMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 });
     this.arrow = new THREE.Mesh(owner.arrowGeo, arrowMat);
@@ -129,25 +160,43 @@ class SnakeView {
     this.group.add(this.wave);
     this.flashT = -1;
     this.flashN = 0;
+    this.flash = null;                            // opts of the running wave, see SnakeViews.flash
 
     this.aura = new Aura(this.group, this.skin, R, C.graphics.auraScale);
 
-    // The name tag is assembled from text nodes; a nickname is never parsed as HTML
+    // The name tag is assembled from text nodes; a nickname is never parsed as HTML.
+    // badge = crown / medal / nemesis marks, title = the chosen achievement title, streak = 🔥n
     const el = document.createElement('div');
     el.className = 'nameTag' + (data.ai ? ' ai' : '');
+    this.badgeEl = document.createElement('em');
+    this.titleEl = document.createElement('span');
+    this.titleEl.className = 'title';
     this.nameNode = document.createTextNode(data.name);
     this.countEl = document.createElement('i');
-    el.append(this.nameNode, this.countEl);
+    this.streakEl = document.createElement('i');
+    this.streakEl.className = 'streak';
+    el.append(this.badgeEl, this.titleEl, this.nameNode, this.countEl, this.streakEl);
+    this.crown = null;                            // built on first wear
+    this.beacon = null;                           // built on first "almost cleared" alert
+    this.trailT = 0;
     this.label = new owner.CSS2DObject(el);
+    // Anchor the tag's bottom edge (plus a small gap) at the projected point: a screen-space
+    // offset that keeps the head bead clear at any zoom, where a world-space lift alone
+    // shrinks to nothing once the camera is far out
+    this.label.center.set(0.5, 1.4);
     this.labelEl = el;
     this.group.add(this.label);
   }
 
   hide() { this.group.visible = false; }
 
-  startFlash(n) { this.flashT = 0; this.flashN = n; }
+  startFlash(n, opts) {
+    this.flashT = 0; this.flashN = n;
+    this.flash = { scale: 1.55, color: 0xbfefff, orb: 2.0, orbOpacity: 0.5, ...opts };
+    this.waveMat.color.set(this.flash.color);
+  }
 
-  update(s, anchor, isSelf, dt, labelR2) {
+  update(s, anchor, isSelf, dt, labelR2, isNemesis) {
     this.group.visible = true;
     const C = this.o.C;
     const MAP = C.map.size;
@@ -159,6 +208,8 @@ class SnakeView {
       this.arrow.visible = false;
       this.shield.visible = false;
       this.wave.visible = false;
+      if (this.crown) this.crown.visible = false;
+      if (this.beacon) this.beacon.visible = false;
       this.flashT = -1;
       this.aura.hide();
       if (s.deathPos) {
@@ -169,18 +220,18 @@ class SnakeView {
       } else {
         this.label.visible = false;
       }
-      this.setLabel(s.name, '×', isSelf, false);
+      this.setLabel(s, '×', isSelf, false, isNemesis);
       return;
     }
     this.arrow.visible = true;
     this.label.visible = isSelf || this.o.near2(s.beads[0], anchor) < labelR2;
 
-    // Scan wave: the crest sweeps from the joint (index flashN-1) to the new head (index 0)
-    const flashDur = C.graphics.severFlashSec;
+    // Scan wave: the crest sweeps from the joint (index flashN-1) to the new head (index 0);
+    // with a single bead (eating) it just pops on the head
     let wave = -1, waveU = 0;
     if (this.flashT >= 0) {
       this.flashT += dt;
-      waveU = this.flashT / flashDur;
+      waveU = this.flashT / this.flash.dur;
       if (waveU >= 1) this.flashT = -1;
       else wave = (1 - waveU) * (Math.min(this.flashN, n) - 1);
     }
@@ -213,7 +264,8 @@ class SnakeView {
       let scale = i === 0 ? R * 1.18 : R;
       if (wave >= 0 && i < this.flashN) {
         const k = Math.max(0, 1 - Math.abs(i - wave) / 3);
-        scale *= 1 + 0.55 * k * k;
+        const settle = Math.min(1, (1 - waveU) / 0.3);   // ease the bulge out over the last 30%
+        scale *= 1 + (this.flash.scale - 1) * k * k * settle;
       }
       m.scale.setScalar(scale);
       if (colorHex === null) m.rotation.y += dt * 1.8;                 // wild beads spin fast, to stand out
@@ -222,11 +274,11 @@ class SnakeView {
     }
     for (let i = n; i < this.meshes.length; i++) this.meshes[i].visible = false;
 
-    this.wave.visible = wave >= 0;
-    if (wave >= 0) {
+    this.wave.visible = wave >= 0 && this.flash.orb > 0;
+    if (this.wave.visible) {
       this.wave.position.copy(this.meshes[Math.max(0, Math.round(wave))].position);
-      this.wave.scale.setScalar(R * (2.0 + waveU * 1.8));
-      this.waveMat.opacity = 0.5 * (1 - waveU);
+      this.wave.scale.setScalar(R * this.flash.orb * (1 + waveU * 0.9));
+      this.waveMat.opacity = this.flash.orbOpacity * (1 - waveU);
     }
 
     this.aura.update(dt, this.meshes, n);
@@ -237,6 +289,7 @@ class SnakeView {
       this.headPos.z - Math.sin(s.dir) * 1.05,
     );
     this.arrow.rotation.y = s.dir;
+    this.dir = s.dir;
     this.arrow.material.opacity = isSelf ? 0.6 : 0.28;
     this.arrow.material.color.set(isSelf ? 0x9ff0ff : 0xffffff);
 
@@ -253,15 +306,73 @@ class SnakeView {
       this.shield.visible = false;
     }
 
-    this.label.position.set(this.headPos.x, this.headPos.y + R * 2.6, this.headPos.z);
-    this.setLabel(s.name, String(s.colors.length), isSelf, iv > 0);
+    // Crown: floats and turns above the head of the room's top player
+    if (s.crown) {
+      if (!this.crown) this.crown = this.buildCrown(R);
+      this.crown.visible = true;
+      this.crown.position.set(this.headPos.x, this.headPos.y + R * 2.1 + Math.sin(this.o.t * 3) * 0.12, this.headPos.z);
+      this.crown.rotation.y += dt * 1.2;
+    } else if (this.crown) {
+      this.crown.visible = false;
+    }
+
+    // Beacon: a snake down to its last beads is lit up so the room can converge on it
+    if (s.nearWin) {
+      if (!this.beacon) {
+        this.beacon = new THREE.Mesh(this.o.beaconGeo, this.o.beaconMat);
+        this.group.add(this.beacon);
+      }
+      this.beacon.visible = true;
+      this.beacon.position.set(this.headPos.x, 4.5, this.headPos.z);
+    } else if (this.beacon) {
+      this.beacon.visible = false;
+    }
+
+    // Milestone cosmetic: the tail tip leaves a trail of puffs in its own color
+    if (this.o.onTrail && milestones(s.trophies, C).trail && n > 1) {
+      this.trailT += dt;
+      if (this.trailT >= TRAIL_EVERY) {
+        this.trailT = 0;
+        this.o.onTrail(this.meshes[n - 1].position, this.o.colorOf(s.colors[n - 1]) ?? 0xffffff);
+      }
+    }
+
+    this.label.position.set(this.headPos.x, this.headPos.y + R * 1.3, this.headPos.z);
+    this.setLabel(s, String(s.colors.length), isSelf, iv > 0, isNemesis);
   }
 
-  setLabel(name, count, isSelf, shielded) {
-    if (this.nameNode.nodeValue !== name) this.nameNode.nodeValue = name;
+  buildCrown(R) {
+    const g = new THREE.Group();
+    const band = new THREE.Mesh(this.o.crownBandGeo, this.o.crownMat);
+    band.rotation.x = Math.PI / 2;
+    g.add(band);
+    for (let i = 0; i < 5; i++) {
+      const spike = new THREE.Mesh(this.o.crownSpikeGeo, this.o.crownMat);
+      const a = (i / 5) * Math.PI * 2;
+      spike.position.set(Math.cos(a), 0.4, Math.sin(a));
+      g.add(spike);
+    }
+    g.scale.setScalar(R * 0.9);
+    this.group.add(g);
+    return g;
+  }
+
+  setLabel(s, count, isSelf, shielded, isNemesis) {
+    if (this.nameNode.nodeValue !== s.name) this.nameNode.nodeValue = s.name;
     if (this.countEl.textContent !== count) this.countEl.textContent = count;
-    this.labelEl.classList.toggle('self', isSelf);
-    this.labelEl.classList.toggle('shield', shielded);
+    const badge = (s.crown ? '👑' : '') + (s.medal ? MEDALS[s.medal] : '') + (isNemesis ? '⚔' : '');
+    if (this.badgeEl.textContent !== badge) this.badgeEl.textContent = badge;
+    const title = s.title ? `「${t(`title.${s.title}`)}」` : '';
+    if (this.titleEl.textContent !== title) this.titleEl.textContent = title;
+    const streak = s.streak ? `🔥${s.streak}` : '';
+    if (this.streakEl.textContent !== streak) this.streakEl.textContent = streak;
+    const cls = this.labelEl.classList;
+    cls.toggle('self', isSelf);
+    cls.toggle('shield', shielded);
+    cls.toggle('crown', !!s.crown);
+    cls.toggle('nemesis', isNemesis);
+    cls.toggle('nearWin', !!s.nearWin);
+    cls.toggle('gold', milestones(s.trophies, this.o.C).frame);
   }
 
   dispose() {

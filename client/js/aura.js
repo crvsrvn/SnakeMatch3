@@ -19,7 +19,6 @@ const AURA = {
 };
 
 const tmpColor = new THREE.Color();
-
 export class Aura {
   /** @param parent 蛇的渲染 Group —— 挂在它下面，蛇被整体剔除时雾气自然跟着隐藏 */
   constructor(parent, skin, beadRadius, scale) {

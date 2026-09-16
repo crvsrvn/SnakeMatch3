@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node tests/match3.js && node tests/sim.js && node tests/interp.js",
+    "test": "node tests/match3.js && node tests/sim.js && node tests/interp.js && node tests/retention.js",
     "stress": "node tests/stress.js"
   },
   "dependencies": {

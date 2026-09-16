@@ -37,7 +37,7 @@ export class Net {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(obj));
   }
 
-  join(nickname, skin) { this.send({ t: C2S.JOIN, nickname, skin }); }
+  join(nickname, skin, title) { this.send({ t: C2S.JOIN, nickname, skin, title }); }
   sendInput(dir, sprint) { this.send({ t: C2S.INPUT, dir, sprint }); }
   sendJump() { this.send({ t: C2S.JUMP }); }
 
@@ -70,6 +70,16 @@ export class Net {
         if (m.ev.length) this.h.onEvents?.(m.ev);
         break;
       }
+      case S2C.MAP:
+        this.mapSize = m.size;
+        this.h.onMap?.(m.size);
+        break;
+      case S2C.CONFIG:
+        this.h.onConfig?.(m.config);
+        break;
+      case S2C.PROGRESS:
+        this.h.onProgress?.(m);
+        break;
       case S2C.PONG:
         this.ping = Math.round(performance.now() - m.c);
         break;
@@ -145,9 +155,13 @@ export class Net {
         win: !!s.win,
         deathPos: s.dp ? { x: s.dp[0], y: s.dp[1] } : null,
         tp: teleported,
+        // Retention flags, absent from the row when unset (see World.frame)
+        crown: !!s.cr, streak: s.ws || 0, nearWin: !!s.nw, nemesis: s.nm ?? null,
+        medal: s.md || 0, weekly: s.wk || 0, title: s.tt || null,
       };
     });
 
-    return { snakes, items: this.items };
+    // [kind, phase, secondsLeft] of the room event, or null while idle
+    return { snakes, items: this.items, roomEvent: b.re || null };
   }
 }

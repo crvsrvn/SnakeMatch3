@@ -11,6 +11,8 @@ const MAX_P = 900;
 const MAX_RING = 16;
 const MAX_GHOST = 30;
 const GHOST_DUR = 0.75;
+const GHOST_BLINK_HZ = 4;  // blinks per second, each a smooth swell rather than an on/off strobe
+const GHOST_OUT = 0.25;    // seconds to fade out at the end
 
 export class Effects {
   constructor(scene, CONFIG) {
@@ -49,14 +51,14 @@ export class Effects {
     }
     this.ringCursor = 0;
 
-    // Ghost beads: a cleared bead blinks in place for a moment, so the player sees which
-    // ones went
+    // Ghost beads: a cleared bead lingers for a moment in front of its owner's head, so the
+    // player sees which ones went
     this.ghosts = [];
     for (let i = 0; i < MAX_GHOST; i++) {
       const m = new THREE.Mesh(ghostGeometry(), makeGhostMaterial());
       m.visible = false;
       scene.add(m);
-      this.ghosts.push({ mesh: m, t: -1, y0: 0 });
+      this.ghosts.push({ mesh: m, t: -1, sid: null, slot: 0 });
     }
     this.ghostCursor = 0;
 
@@ -99,24 +101,29 @@ export class Effects {
     r.t = 0; r.dur = dur; r.scale = scale;
   }
 
-  /** Ghost bead: floats up, blinks a few times, disappears */
-  ghost(p, colorHex) {
+  /**
+   * Ghost bead: blinks softly, then fades out. While its owner snake is drawn it rides in
+   * front of the head, `slot` + 1 beads ahead; `p` is where it starts and where it stays if
+   * the owner is off screen.
+   */
+  ghost(p, colorHex, sid, slot) {
     const g = this.ghosts[this.ghostCursor];
     this.ghostCursor = (this.ghostCursor + 1) % MAX_GHOST;
     g.mesh.position.copy(p);
     g.mesh.material.color.set(colorHex);
-    g.mesh.material.opacity = 0.9;
+    g.mesh.material.opacity = 0;
     g.mesh.scale.setScalar(this.C.snake.beadRadius);
     g.mesh.visible = true;
     g.t = 0;
-    g.y0 = p.y;
+    g.sid = sid; g.slot = slot;
   }
 
   markerOn() { this.marker.visible = true; this.markerT = 0; }
   markerOff() { this.marker.visible = false; }
   get markerVisible() { return this.marker.visible; }
 
-  update(dt) {
+  /** @param headOf (snakeId) => { headPos, dir } of a drawn snake, or null; render coordinates */
+  update(dt, headOf) {
     const { pos, vel, life, life0, col, base } = this;
     for (let i = 0; i < MAX_P; i++) {
       if (life[i] <= 0) continue;
@@ -153,11 +160,20 @@ export class Effects {
       g.t += dt;
       const u = g.t / GHOST_DUR;
       if (u >= 1) { g.t = -1; g.mesh.visible = false; continue; }
-      g.mesh.position.y = g.y0 + u * 1.5;
-      g.mesh.scale.setScalar(this.C.snake.beadRadius * (1 + u * 0.55));
-      // Blink three times over the first 70%, then fade out
-      const blink = 0.55 + 0.45 * Math.cos(g.t * 40);
-      g.mesh.material.opacity = u < 0.7 ? 0.95 * blink : 0.95 * blink * (1 - (u - 0.7) / 0.3);
+      // Ride ahead of the head as it moves, strung out along the heading at bead spacing, so
+      // the snake still reads as one body whose real head is a few beads back. The
+      // cleared beads sat on the body, behind the camera focus and easy to miss.
+      const h = headOf(g.sid);
+      if (h) {
+        const lead = (g.slot + 1) * this.C.snake.beadSpacing;
+        g.mesh.position.x = h.headPos.x + Math.cos(h.dir) * lead;
+        g.mesh.position.z = h.headPos.z - Math.sin(h.dir) * lead;   // render z = -game y
+        g.mesh.position.y = h.headPos.y;
+      }
+      // Blink as a raised cosine between 0.3 and 1 (starts dim, so it also eases in), never a
+      // hard on/off; fade out over the end
+      const blink = 0.65 - 0.35 * Math.cos(g.t * GHOST_BLINK_HZ * 2 * Math.PI);
+      g.mesh.material.opacity = 0.9 * blink * Math.min(1, (GHOST_DUR - g.t) / GHOST_OUT);
     }
 
     if (this.marker.visible) {

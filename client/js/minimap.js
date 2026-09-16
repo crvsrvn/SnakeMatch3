@@ -65,8 +65,13 @@ export class Minimap {
       g.beginPath(); g.arc(x, y, 2.4, 0, Math.PI * 2); g.stroke();
     }
 
-    // Snakes: small dots for the body, a larger one for the head
-    for (const s of snakes) {
+    // Snakes: small dots for the body. Heads: bots are a dim round dot, humans a bright
+    // arrow pointing along the heading, so a person is unmistakable next to the round bots
+    // and round wild beads. Bots first, humans, then you, so the important ones stay on top.
+    const rank = (s) => (s.id === myId ? 2 : s.ai ? 0 : 1);
+    const nemesis = snakes.find((s) => s.id === myId)?.nemesis ?? null;
+    const blink = Math.sin(this.t * 12) > 0;
+    for (const s of [...snakes].sort((a, b) => rank(a) - rank(b))) {
       const me = s.id === myId;
       if (s.beads.length === 0) {
         if (!s.deathPos || s.win) continue;      // a win pause is not a death, so no cross
@@ -86,15 +91,33 @@ export class Minimap {
         g.fillRect(b.x * k - 0.8, (C.map.size - b.y) * k - 0.8, 1.6, 1.6);
       }
       const h = s.beads[0];
-      g.fillStyle = me ? '#5ad2ff' : (s.ai ? '#9fb0cc' : '#ffffff');
-      g.beginPath();
-      g.arc(h.x * k, (C.map.size - h.y) * k, me ? dot : dot * 0.8, 0, Math.PI * 2);
-      g.fill();
+      const hx = h.x * k, hy = (C.map.size - h.y) * k;
+      // Almost cleared: a blinking red ring, whoever it is, so the room can converge
+      if (s.nearWin && blink) {
+        g.strokeStyle = '#ff6a7d';
+        g.lineWidth = 1.6;
+        g.beginPath(); g.arc(hx, hy, dot + 5, 0, Math.PI * 2); g.stroke();
+      }
+      if (s.ai) {
+        g.fillStyle = '#9fb0cc';
+        g.beginPath();
+        g.arc(hx, hy, dot * 0.6, 0, Math.PI * 2);
+        g.fill();
+        continue;
+      }
+      // The crown holder gets a gold ring, the one who killed you lately a red arrow
+      if (s.crown) {
+        g.strokeStyle = '#ffd45e';
+        g.lineWidth = 1.6;
+        g.beginPath(); g.arc(hx, hy, dot + 3.5, 0, Math.PI * 2); g.stroke();
+      }
+      const fill = me ? '#5ad2ff' : (s.id === nemesis ? '#ff6a7d' : '#ffffff');
+      arrow(g, hx, hy, s.dir, me ? dot * 1.5 : dot * 1.3, fill);
       if (me) {
         g.strokeStyle = '#5ad2ff';
         g.lineWidth = 1.2;
         g.beginPath();
-        g.arc(h.x * k, (C.map.size - h.y) * k, dot + 3, 0, Math.PI * 2);
+        g.arc(hx, hy, dot + 3.5, 0, Math.PI * 2);
         g.stroke();
       }
     }
@@ -115,4 +138,24 @@ export class Minimap {
     g.lineWidth = 1;
     g.strokeRect(0.5, 0.5, px - 1, px - 1);
   }
+}
+
+// A notched arrowhead pointing along `dir` (world radians; the canvas y axis is flipped),
+// with a dark outline so it stays readable over a bright body trail or a wild bead halo.
+function arrow(g, x, y, dir, r, fill) {
+  g.save();
+  g.translate(x, y);
+  g.rotate(-dir);
+  g.beginPath();
+  g.moveTo(r * 1.4, 0);
+  g.lineTo(-r, r * 0.9);
+  g.lineTo(-r * 0.4, 0);
+  g.lineTo(-r, -r * 0.9);
+  g.closePath();
+  g.fillStyle = fill;
+  g.fill();
+  g.strokeStyle = 'rgba(0,0,0,.7)';
+  g.lineWidth = 1;
+  g.stroke();
+  g.restore();
 }

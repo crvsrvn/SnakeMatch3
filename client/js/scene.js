@@ -12,7 +12,6 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 export function createScene(CONFIG) {
-  const MAP = CONFIG.map.size;
   const stage = document.getElementById('stage');
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -52,14 +51,13 @@ export function createScene(CONFIG) {
   // ---- Ground: a grid plane 3x3 maps across. Together with "render coordinates always
   // land within +/- size/2 of the camera focus", this makes wrapping seamless. ----
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(MAP * 3, MAP * 3),
+    new THREE.BufferGeometry(),
     new THREE.MeshStandardMaterial({
-      map: gridTexture(renderer, MAP * 3 / CONFIG.map.gridStep),
+      map: gridTexture(renderer),
       color: 0xffffff, roughness: 1.0, metalness: 0.0, envMapIntensity: 0.35,
     }),
   );
   ground.rotation.x = -Math.PI / 2;
-  ground.position.set(MAP / 2, -CONFIG.snake.beadRadius, -MAP / 2);
   ground.receiveShadow = CONFIG.graphics.shadows;
   scene.add(ground);
 
@@ -68,7 +66,7 @@ export function createScene(CONFIG) {
   // Built from whole grid lines rather than nine rectangles: the shared edge between two
   // tiles is drawn once, so it does not add up to double brightness.
   const boundary = new THREE.Mesh(
-    boundaryGeometry(MAP, CONFIG.map.borderHeight, CONFIG.map.borderBand),
+    new THREE.BufferGeometry(),
     new THREE.MeshBasicMaterial({
       vertexColors: true, transparent: true, side: THREE.DoubleSide,
       depthWrite: false, blending: THREE.AdditiveBlending,
@@ -78,17 +76,30 @@ export function createScene(CONFIG) {
   boundary.frustumCulled = false;
   scene.add(boundary);
 
+  /** Size the ground and the boundary to the map edge; called again whenever it changes,
+   *  which it does with the player count */
+  function setMapSize(MAP) {
+    ground.geometry.dispose();
+    ground.geometry = new THREE.PlaneGeometry(MAP * 3, MAP * 3);
+    ground.material.map.repeat.setScalar(MAP * 3 / CONFIG.map.gridStep);
+    ground.position.set(MAP / 2, -CONFIG.snake.beadRadius, -MAP / 2);
+    boundary.geometry.dispose();
+    boundary.geometry = boundaryGeometry(MAP, CONFIG.map.borderHeight, CONFIG.map.borderBand);
+  }
+  setMapSize(CONFIG.map.size);
+
   // ---- Bloom is what actually makes the emissive skins and the boundary wall glow. ----
   // With EffectComposer, tone mapping and color space conversion must be left to the final
   // OutputPass; doing them twice washes the picture out.
   const B = CONFIG.graphics.bloom;
   let composer = null;
+  let bloom = null;
   if (B && B.enabled) {
     composer = new EffectComposer(renderer);
     composer.setPixelRatio(Math.min(devicePixelRatio, 2));
     composer.setSize(innerWidth, innerHeight);
     composer.addPass(new RenderPass(scene, camera));
-    const bloom = new UnrealBloomPass(
+    bloom = new UnrealBloomPass(
       new THREE.Vector2(innerWidth, innerHeight), B.strength, B.radius, B.threshold,
     );
     // Run the bloom pyramid at a reduced resolution. The final composite is still full
@@ -100,6 +111,14 @@ export function createScene(CONFIG) {
     bloom.setSize(innerWidth, innerHeight);
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
+  }
+
+  /** Hot reload of graphics.bloom: the three live knobs; enabled/scale are boot-time */
+  function setBloom(b) {
+    if (!bloom) return;
+    bloom.strength = b.strength;
+    bloom.radius = b.radius;
+    bloom.threshold = b.threshold;
   }
 
   function render() {
@@ -129,11 +148,12 @@ export function createScene(CONFIG) {
     sun.target.updateMatrixWorld();
   }
 
-  return { renderer, labelRenderer, scene, camera, placeCamera, render, CSS2DObject };
+  return { renderer, labelRenderer, scene, camera, placeCamera, setMapSize, setBloom, render, CSS2DObject };
 }
 
-/** Procedural grid texture: one cell, dark fill and bright border, tiled by RepeatWrapping */
-function gridTexture(renderer, repeat) {
+/** Procedural grid texture: one cell, dark fill and bright border, tiled by RepeatWrapping;
+ *  the caller sets the repeat count */
+function gridTexture(renderer) {
   const N = 128;
   const c = document.createElement('canvas');
   c.width = c.height = N;
@@ -145,7 +165,6 @@ function gridTexture(renderer, repeat) {
   g.strokeRect(0, 0, N, N);
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(repeat, repeat);
   tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;

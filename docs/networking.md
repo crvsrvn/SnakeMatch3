@@ -24,11 +24,12 @@ const wss = new WebSocketServer({ server });  // 同端口的 WebSocket 升级
 浏览器                                    服务器
   │  ── HTTP GET / ────────────────────►  │  静态页面
   │  ── WebSocket Upgrade ─────────────►  │
-  │  ◄──────────────────── welcome ────   │  配置 + 昵称历史 + 占用列表 + 你的 IP
+  │  ◄──────────────────── welcome ────   │  配置 + 你的档案（战绩卡）+ 荣誉墙 + 占用列表 + 你的 IP
   │                                       │  （此时还没有蛇，也不会收到 state）
-  │  ── join {nickname, skin} ─────────►  │  校验昵称占用
+  │  ── join {nickname, skin, title} ──►  │  建档 / 改名一次 / 校验昵称占用
   │  ◄──────────────── joined {id} ────   │  创建蛇，此后开始收 state
-  │      或 ◄───────── reject {reason}    │  昵称被占，附带建议名
+  │  ◄──────────────── progress ───────   │  每日任务与成就快照，之后只在有变化时再发
+  │      或 ◄───────── reject {reason}    │  昵称被占（附建议名）或该地址已在场上
   │                                       │
   │  ◄──────────────── state ──────────   │  30 包/秒，每包 2 帧位置
   │  ── input {dir, sprint} ───────────►  │  只在按键变化时发
@@ -46,7 +47,7 @@ const wss = new WebSocketServer({ server });  // 同端口的 WebSocket 升级
 
 | 类型 | 内容 | 频率 |
 |---|---|---|
-| `join` | `{nickname, skin}` | 一次 |
+| `join` | `{nickname, skin, title}` | 一次 |
 | `input` | `{dir: 弧度, sprint: bool}` | **事件驱动**：只在方向键/Shift 状态变化时发，不是每帧 |
 | `jump` | `{}` | 按一次发一次 |
 | `ping` | `{c: performance.now()}` | 1 Hz |
@@ -61,11 +62,16 @@ const wss = new WebSocketServer({ server });  // 同端口的 WebSocket 升级
 
 | 类型 | 内容 |
 |---|---|
-| `welcome` | `{config, nicknames[], taken[], defaultNickname, ip}` |
-| `joined` | `{id, nickname, skin, trophies}` |
-| `reject` | `{reason, suggestion, taken[]}` |
+| `welcome` | `{config, profile\|null, hall[], taken[], defaultNickname, ip, firstVisit}` |
+| `joined` | `{id, nickname, skin, trophies, title}` |
+| `reject` | `{reason: 'nickname-taken' \| 'already-playing', suggestion, taken[]}` |
 | `state` | `{f: [帧, 帧], items: [...], ev: [...]}` ← 主力 |
+| `progress` | `{daily, bestStreak, weekly, medal, achievements[], title, unlocked[], tasks[], bonus}` 只发给当事人 |
+| `map` / `config` | 地图边长变化 / 管理员热更新配置 |
 | `pong` | `{c}` 原样回传 |
+
+帧里的每条蛇除位置外还带留存字段，只在非零时出现：`cr` 皇冠、`ws` 连胜、`nw` 归零警报、
+`nm` 仇人 id、`md` 上周奖牌、`wk` 本周奖杯、`tt` 称号；帧本身带 `re: [事件, 阶段, 剩余秒]`。
 
 ## 4. `state` 包长什么样
 
@@ -114,7 +120,7 @@ WebSocket 跑在 TCP 上，**有序可靠**，丢包和乱序由 TCP 处理掉�
 ## 6. 断线
 
 不重连。`ws.on('close')` 直接把蛇从世界里移除；客户端弹回登录页要求刷新。
-奖杯已经落盘（`database/players.json`），重进按 `IP::昵称` 找回。
+奖杯已经落盘（`database/db.json`），重进按 IP 找回档案。
 
 ---
 
@@ -157,7 +163,7 @@ location / {
 
 ## 2.2 身份：IP 绑定在公网会塌（必须）
 
-现在档案键是 `IP::昵称`。公网上这两头都不成立：
+现在档案键是 IP（一个地址一条档案、一个昵称）。公网上这两头都不成立：
 
 - **一个 IP 对应很多人**：运营商 CGNAT、公司/学校出口、同一个 WiFi 下的所有设备
 - **一个人的 IP 会变**：4G 切 WiFi、DHCP 续约、移动网络换基站
@@ -257,11 +263,12 @@ AOI 之后如果还想再压一档：
 
 ## 2.7 持久化：JSON 文件换 SQLite（应该做）
 
-现在 `database/players.json` 是**每 3 秒把整个表重写一遍**。几十个玩家没问题，
-上千条记录时每次写几百 KB，而且进程被 kill 时最多丢 3 秒的数据。
+现在 `database/db.json` 是**整表重写**：奖杯类变更立即写，每日/死敌等计数 2 秒合并写一次。
+几十个玩家没问题，上千条记录时每次写几百 KB，而且进程被 kill 时计数类最多丢 2 秒的数据。
 
 换 `better-sqlite3`：单文件、同步 API（不用改成异步）、有事务、几万玩家毫无压力。
-表结构就两列：`token TEXT PRIMARY KEY, nickname TEXT, trophies INTEGER, last_seen INTEGER`。
+主表 `token TEXT PRIMARY KEY, nickname TEXT, trophies INTEGER, last_seen INTEGER`，
+周榜/每日/成就/死敌各自一张按 token 关联的小表，比现在塞在一个 JSON 对象里更好查。
 
 ## 2.8 容量与分片（按需）
 

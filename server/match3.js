@@ -21,14 +21,16 @@ function findRun(colors) {
       break;
     }
     if (j - i + 1 >= MIN_RUN) {
-      return { start: i, count: j - i + 1, color: base === null ? WILD : base };
+      const wild = colors.slice(i, j + 1).includes(WILD);
+      return { start: i, count: j - i + 1, color: base === null ? WILD : base, wild };
     }
   }
   return null;
 }
 
 /**
- * @returns {Array<{color:number, points:Array<[number,number,number]>}>} one entry per clear, in chain order
+ * @returns {Array<{color:number, wild:boolean, points:Array<[number,number,number]>}>} one entry per clear,
+ *   in chain order; wild = a rainbow bead took part
  */
 export function resolveMatches(colors, positions) {
   const groups = [];
@@ -45,7 +47,7 @@ export function resolveMatches(colors, positions) {
       positions.splice(run.start, run.count);
     }
     colors.splice(run.start, run.count);
-    groups.push({ color: run.color, points });
+    groups.push({ color: run.color, wild: run.wild, points });
   }
   return groups;
 }

@@ -1,9 +1,9 @@
 @echo off
 chcp 65001 >nul
-title SnakeMatch3 Server
+title SnakeMatch3 Address
 cd /d "%~dp0.."
 where node >nul 2>nul || goto :nonode
-node run\run.js server
+node run\run.js address
 goto :end
 
 :nonode

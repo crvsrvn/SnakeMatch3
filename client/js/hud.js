@@ -12,8 +12,8 @@ export class Hud {
       hud: $('hud'), name: $('myName'), trophy: $('myTrophy'), len: $('myLen'),
       beads: $('beads'), board: $('boardList'), toasts: $('toasts'),
       fps: $('fps'), frameMs: $('frameMs'), ping: $('ping'),
-      death: $('death'), killer: $('dKiller'), count: $('dCount'),
-      win: $('win'), wTrophy: $('wTrophy'), wCount: $('wCount'),
+      death: $('death'), reason: $('dReason'), count: $('dCount'), dStats: $('dStats'),
+      win: $('win'), wTrophy: $('wTrophy'), wCount: $('wCount'), wGain: $('wGain'), wStreak: $('wStreak'),
     };
     this.lastBeads = '';
     this.lastBoard = '';
@@ -64,26 +64,35 @@ export class Hud {
       const rank = all.indexOf(s) + 1;
       const cls = [s.id === myId ? 'me' : '', s.dead ? 'out' : ''].filter(Boolean).join(' ');
       const len = s.dead ? (s.win ? '🏆' : '💀') : s.colors.length;
-      return `<li class="${cls}"><span><i class="rank">${rank}</i>${s.ai ? '🤖 ' : ''}${escapeHtml(s.name)}</span>`
-        + `<span><span class="len">${len}</span> <em>🏆${s.trophies}</em></span></li>`;
+      const badge = (s.crown ? '👑 ' : '') + (s.medal ? MEDALS[s.medal] + ' ' : '') + (s.ai ? '🤖 ' : '');
+      const streak = s.streak ? `<span class="streak">🔥${s.streak}</span>` : '';
+      const weekly = s.weekly ? `<small>+${s.weekly}</small>` : '';
+      return `<li class="${cls}"><span><i class="rank">${rank}</i>${badge}${escapeHtml(s.name)}${streak}</span>`
+        + `<span><span class="len">${len}</span> <em>🏆${s.trophies}${weekly}</em></span></li>`;
     }).join('');
     if (html === this.lastBoard) return;
     this.lastBoard = html;
     this.el.board.innerHTML = html;
   }
 
-  /** Pause panel: death and win share one countdown. remain === null hides both. */
-  setPause(remain, won, killer, trophies) {
+  /**
+   * Pause panel: death and win share one countdown. remain === null hides both.
+   * @param info { trophies, gain, streak } for a win; { reason, stats } for a death, where
+   *   stats is the near-miss line ("down to N beads, ate X, severed Y")
+   */
+  setPause(remain, won, info) {
     const el = won ? this.el.win : this.el.death;
     const other = won ? this.el.death : this.el.win;
     if (!other.hidden) other.hidden = true;
     if (remain == null) { el.hidden = true; return; }
     el.hidden = false;
     if (won) {
-      const n = String(trophies);
-      if (this.el.wTrophy.textContent !== n) this.el.wTrophy.textContent = n;
-    } else if (killer && this.el.killer.textContent !== killer) {
-      this.el.killer.textContent = killer;
+      setText(this.el.wTrophy, String(info.trophies));
+      setText(this.el.wGain, String(info.gain || 1));
+      setText(this.el.wStreak, info.streak >= 2 ? t('win.streak', { n: info.streak }) : '');
+    } else {
+      if (info.reason) setText(this.el.reason, info.reason);
+      setText(this.el.dStats, info.stats || '');
     }
     const count = won ? this.el.wCount : this.el.count;
     const n = String(Math.max(1, Math.ceil(remain)));
@@ -104,6 +113,13 @@ export class Hud {
     this.el.frameMs.textContent = frameMs;
     this.el.ping.textContent = ping;
   }
+}
+
+export const MEDALS = { 1: '🥇', 2: '🥈', 3: '🥉' };
+
+/** Assign textContent only on change: rewriting it every frame would thrash layout for nothing */
+function setText(el, s) {
+  if (el.textContent !== s) el.textContent = s;
 }
 
 function escapeHtml(s) {

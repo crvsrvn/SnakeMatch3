@@ -1,0 +1,42 @@
+{
+  "version": 2,
+  "settledWeek": "2026-W38",
+  "hall": [],
+  "players": {
+    "127.0.0.1": {
+      "ip": "127.0.0.1",
+      "nickname": "oo",
+      "trophies": 6,
+      "renames": 0,
+      "bestStreak": 1,
+      "lastSeen": 1789562166975,
+      "lastRank": 1,
+      "lastTrophyAt": 1789562162485,
+      "weekly": {
+        "key": "2026-W38",
+        "trophies": 6
+      },
+      "medal": 0,
+      "daily": {
+        "date": "2026-09-16",
+        "firstWin": true,
+        "eat": 37,
+        "sever": 4,
+        "chain": 0,
+        "done": {
+          "sever": true,
+          "eat": true
+        }
+      },
+      "achievements": {
+        "wildMatch": 1789561859747,
+        "revenge": 1789561954976,
+        "firstWin": 1789562008515,
+        "bigGraft": 1789562030536
+      },
+      "counters": {},
+      "title": null,
+      "nemeses": {}
+    }
+  }
+}

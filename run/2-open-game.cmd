@@ -3,7 +3,7 @@ chcp 65001 >nul
 title SnakeMatch3
 cd /d "%~dp0.."
 where node >nul 2>nul || goto :nonode
-node scripts\run.js client
+node run\run.js client
 goto :end
 
 :nonode

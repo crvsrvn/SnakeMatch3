@@ -19,12 +19,21 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
   font:600 12px/1 system-ui,"PingFang SC","Microsoft YaHei",sans-serif;
   color:#fff;white-space:nowrap;padding:3px 7px;border-radius:999px;
   background:rgba(8,12,24,.55);border:1px solid rgba(255,255,255,.14);
-  text-shadow:0 1px 3px rgba(0,0,0,.9);transform:translateY(-6px)
+  text-shadow:0 1px 3px rgba(0,0,0,.9)
 }
 .nameTag.self{background:rgba(30,110,160,.7);border-color:rgba(120,220,255,.6)}
 .nameTag.ai{opacity:.72;font-weight:500}
 .nameTag.shield::before{content:"\1F6E1";margin-right:4px}
 .nameTag i{font-style:normal;opacity:.75;margin-left:4px}
+/* retention badges: crown holder, weekly medal, your nemesis, a streak, a title, a milestone frame */
+.nameTag em{font-style:normal;margin-right:4px}
+.nameTag .title{color:#ffd45e;font-weight:500;opacity:.9;margin-right:4px}
+.nameTag .streak{color:#ff9a4d;margin-left:4px;font-style:normal}
+.nameTag.crown{border-color:#ffd45e;box-shadow:0 0 10px rgba(255,212,94,.55)}
+.nameTag.nemesis{border-color:#ff6a7d;background:rgba(70,16,26,.75)}
+.nameTag.nearWin{animation:pulseTag .6s ease-in-out infinite alternate}
+.nameTag.gold{border:1px solid #ffd45e;background:linear-gradient(90deg,rgba(90,60,10,.8),rgba(30,20,6,.7))}
+@keyframes pulseTag{from{box-shadow:0 0 0 rgba(255,106,125,0)}to{box-shadow:0 0 14px rgba(255,106,125,.9)}}
 
 /* ---------- HUD ---------- */
 #hud{position:fixed;inset:0;pointer-events:none}
@@ -65,19 +74,40 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 #board li .rank{font-style:normal;color:var(--dim);font-size:11px;margin-right:6px;
   display:inline-block;min-width:1.4em;text-align:right;font-variant-numeric:tabular-nums}
 #board{max-height:calc(100vh - 40px);overflow:hidden}
+#board li em small{font-size:10px;color:var(--dim);margin-left:3px}
+#board li .streak{color:#ff9a4d;font-size:11px;margin-left:4px}
+
+/* ---------- Daily tasks (under the status card) ---------- */
+#daily{padding:8px 12px;border-radius:12px;font-size:11px;
+  background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(8px)}
+#daily .title{font-size:10px;letter-spacing:.14em;color:var(--dim);margin-bottom:3px}
+#daily .task{display:flex;justify-content:space-between;gap:8px;color:var(--dim)}
+#daily .task b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+#daily .task.done{color:#5ce08a}
+#daily .task.done b{color:#5ce08a}
+
+/* ---------- Room event banner ---------- */
+#banner{left:50%;top:16px;transform:translateX(-50%);padding:6px 18px;border-radius:999px;
+  font-size:13px;font-weight:700;letter-spacing:.04em;white-space:nowrap;
+  background:rgba(12,18,34,.85);border:1px solid var(--line)}
+#banner[hidden]{display:none}
+#banner.warn{color:#ffdf9a;border-color:rgba(255,212,94,.5)}
+#banner.on{color:#fff;background:linear-gradient(90deg,#4a2a7a,#2a6a8a);border-color:#b6a2ff;
+  animation:pulseTag 1s ease-in-out infinite alternate}
+#banner small{font-weight:500;opacity:.8;margin-left:8px}
 
 #corner{left:16px;bottom:14px;display:flex;flex-direction:column;gap:8px;
   max-width:min(62vw,560px)}
-#rules{padding:9px 12px;border-radius:12px;font-size:12px;line-height:1.85;
+.rules{padding:9px 12px;border-radius:12px;font-size:12px;line-height:1.85;
   background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(8px)}
-#rules .rHead{font-size:10px;letter-spacing:.16em;color:var(--dim);margin-bottom:2px}
-#rules b{color:var(--accent);font-weight:600;margin-right:8px}
+.rules .rHead{font-size:10px;letter-spacing:.16em;color:var(--dim);margin-bottom:2px}
+.rules b{color:var(--accent);font-weight:600;margin-right:8px}
 /* the label and the rule sit in separate elements so they can be translated apart */
-#rules i{font-style:normal;font-weight:600;
+.rules i{font-style:normal;font-weight:600;
   background:linear-gradient(90deg,#ff4d5a,#ffd23f,#4ce07a,#43a8ff,#b06bff);
   -webkit-background-clip:text;background-clip:text;color:transparent}
-#hint{font-size:12px;color:var(--dim);line-height:1.7;padding-left:2px}
-#hint b{color:var(--ink)}
+.hint{font-size:12px;color:var(--dim);line-height:1.7;padding-left:2px}
+.hint b{color:var(--ink)}
 
 #toasts{left:50%;top:64px;transform:translateX(-50%);display:flex;flex-direction:column;
   align-items:center;gap:6px;width:max-content}
@@ -101,6 +131,9 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 .dTitle{font-size:26px;font-weight:800;letter-spacing:.08em;color:#ffd8de}
 .dBy{margin-top:4px;font-size:13px;color:#ffb9c3}
 .dBy b{color:#fff}
+.dStats{margin-top:6px;font-size:12px;color:#ffb9c3}
+.dStats:empty{display:none}
+.dStats b{color:#ffd45e}
 .dCd{margin-top:12px;font-size:13px;color:#ffd8de}
 .dCd b{font-size:26px;color:#fff;font-variant-numeric:tabular-nums;margin-right:2px}
 
@@ -114,8 +147,24 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 .wTitle{font-size:26px;font-weight:800;letter-spacing:.08em;color:#fff3cc}
 .wBy{margin-top:4px;font-size:13px;color:#ffdf9a}
 .wBy b{color:#fff}
+.wStreak{margin-top:4px;font-size:13px;color:#ff9a4d;font-weight:700}
+.wStreak:empty{display:none}
 .wCd{margin-top:12px;font-size:13px;color:#ffdf9a}
 .wCd b{font-size:26px;color:#fff;font-variant-numeric:tabular-nums;margin-right:2px}
+
+/* ---------- Tutorial (first visit) ---------- */
+#tutorial{position:fixed;inset:0;display:grid;place-items:center;z-index:20;
+  background:rgba(3,5,12,.6);backdrop-filter:blur(3px)}
+#tutorial[hidden]{display:none}
+.tutCard{width:min(92vw,560px);padding:20px 22px 18px;border-radius:18px;
+  background:rgba(10,16,30,.95);border:1px solid var(--line);
+  box-shadow:0 20px 60px rgba(0,0,0,.6);animation:pop .25s ease-out}
+.tutCard .tTitle{font-size:20px;font-weight:800;letter-spacing:.06em;margin-bottom:12px}
+.tutCard .rules{font-size:13px}
+.tutCard .hint{margin-top:10px;font-size:13px}
+#tutOk{display:block;width:100%;margin-top:16px;padding:11px;font-size:15px;font-weight:700;
+  color:#04121c;background:linear-gradient(90deg,#5ad2ff,#78ffd0);border:0;border-radius:11px;
+  cursor:pointer}
 
 /* ---------- Login ---------- */
 #login{position:fixed;inset:0;display:grid;place-items:center;z-index:10;
@@ -132,6 +181,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 .panel h1 span{color:var(--accent)}
 .sub{margin:6px 0 20px;font-size:13px;color:var(--dim)}
 .field{display:block;font-size:12px;color:var(--dim);margin-bottom:16px}
+.field[hidden]{display:none}
 #nickInput{display:block;width:100%;margin-top:6px;padding:10px 12px;font-size:15px;
   color:var(--ink);background:rgba(255,255,255,.05);border:1px solid var(--line);
   border-radius:10px;outline:none}
@@ -139,20 +189,29 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 #nickHint{margin-top:6px;font-size:12px;min-height:1.2em;color:var(--dim)}
 #nickHint.bad{color:var(--bad)}
 #nickHint.ok{color:#5ce08a}
-#nickHistory{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-#nickHistory:empty{display:none}
-.nickChip{cursor:pointer;padding:4px 10px;border-radius:999px;font-size:12px;color:var(--ink);
-  background:rgba(255,255,255,.06);border:1px solid var(--line)}
-.nickChip:hover{border-color:var(--accent);background:rgba(90,210,255,.14)}
-.nickChip.taken{opacity:.4;text-decoration:line-through;cursor:not-allowed}
-.nickChip.taken:hover{border-color:var(--line);background:rgba(255,255,255,.06)}
-.nickChip em{font-style:normal;color:#ffd45e;margin-left:5px}
+#nickInput:read-only{opacity:.7;border-style:dashed}
+/* record card, title picker and hall of fame */
+.record{margin-top:6px;padding:8px 12px;border-radius:10px;font-size:12px;line-height:1.7;color:var(--ink);
+  background:rgba(255,255,255,.04);border:1px solid var(--line)}
+.record .warn{color:#ffb9c3}
+.record .good{color:#5ce08a}
+.record .dim{color:var(--dim)}
+#titleSelect{display:block;width:100%;margin-top:6px;padding:8px 10px;font:inherit;font-size:13px;
+  color:var(--ink);background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;outline:none}
+#titleSelect option{background:#101a33}
+.hall{margin-top:6px;font-size:12px;line-height:1.7;color:var(--dim)}
+.hall .w{color:var(--ink);margin-right:6px}
+.hall .n{color:var(--ink)}
+.hall em{font-style:normal;color:#ffd45e}
 #skinList{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:8px;margin-top:6px}
 .skinBtn{cursor:pointer;padding:8px 6px;border-radius:10px;font-size:12px;color:var(--ink);
   background:rgba(255,255,255,.04);border:1px solid var(--line);text-align:center;
   display:flex;flex-direction:column;align-items:center;gap:6px}
 .skinBtn:hover{background:rgba(255,255,255,.08)}
 .skinBtn.on{border-color:var(--accent);background:rgba(90,210,255,.12)}
+.skinBtn.locked{opacity:.45;cursor:not-allowed}
+.skinBtn.locked:hover{background:rgba(255,255,255,.04)}
+.skinBtn .lock{font-size:10px;color:var(--dim)}
 .skinBtn .dot{width:26px;height:26px;border-radius:50%}
 .skinBtn .dot.glass{background:radial-gradient(circle at 32% 28%,#fff 2%,rgba(120,220,255,.75) 30%,rgba(30,90,140,.85) 100%);
   box-shadow:inset -3px -4px 8px rgba(0,0,0,.5),0 0 8px rgba(120,220,255,.5)}
