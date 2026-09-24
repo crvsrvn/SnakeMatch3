@@ -48,7 +48,7 @@ export const CONFIG = {
   },
 
   // 珠子调色板：增减条目即可改变参与的颜色数
-  colors: ['#ff4d5a', '#ffae43', '#e9ff3f', '#4ce060', '#4cd6e0', '#3d49f0', '#cc4ce0'],
+  colors: ['#ff4d5a', '#ffae43', '#4ce060', '#4cd6e0', '#3d49f0'],
 
   items: {
     count: 25,             // 普通道具补足到这个数量（不含彩虹珠）
